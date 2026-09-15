@@ -1,0 +1,13 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+*.mp4
+*.mov
+*.pyc
+__pycache__/
+node_modules/
+tmp/
+demo-frames/
+DEMO_VIDEO_GUIDE.md
