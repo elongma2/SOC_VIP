@@ -1,0 +1,13 @@
+.env
+.pytest_cache/
+.uv-cache/
+.playwright-cli/
+data_pipeline/reports/rendered_checks/
+__pycache__/
+*.py[cod]
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/verification-*.png

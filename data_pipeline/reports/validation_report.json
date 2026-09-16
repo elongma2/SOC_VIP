@@ -1,0 +1,85 @@
+{
+  "dataset_version": "acd-2026-1__sg-2025-12-01",
+  "validation_status": "passed",
+  "errors": [],
+  "warnings": [
+    {
+      "code": "malformed_source_identifier_preserved",
+      "substance_id": "substance-acd-ii-255",
+      "values": [
+        "144202-89-2"
+      ]
+    },
+    {
+      "code": "malformed_source_identifier_preserved",
+      "substance_id": "substance-acd-ii-1226",
+      "values": [
+        "6566-48-1"
+      ]
+    },
+    {
+      "code": "malformed_source_identifier_preserved",
+      "substance_id": "substance-acd-ii-1319",
+      "values": [
+        "18266-25-9"
+      ]
+    },
+    {
+      "code": "malformed_source_identifier_preserved",
+      "substance_id": "substance-acd-ii-1443",
+      "values": [
+        "4874-78-3"
+      ]
+    },
+    {
+      "code": "malformed_source_identifier_preserved",
+      "substance_id": "substance-acd-ii-1711",
+      "values": [
+        "607-285-6"
+      ]
+    },
+    {
+      "code": "malformed_source_identifier_preserved",
+      "substance_id": "substance-acd-iii-305",
+      "values": [
+        "4403-90-"
+      ]
+    }
+  ],
+  "counts": {
+    "raw_records": 3908,
+    "normalized_rules": 3983,
+    "substances": 3877,
+    "rules_by_status": {
+      "inactive_source_entry": 31,
+      "manual_review_required": 1176,
+      "normalized": 2776
+    },
+    "cross_references": 1978,
+    "cross_references_by_status": {
+      "acd_only": 40,
+      "aligned": 872,
+      "ambiguous": 9,
+      "changed": 1057
+    },
+    "manual_review_queue": 2313,
+    "spot_checks": 20,
+    "completed_spot_checks": 20
+  },
+  "reproducibility_status": "matched_previous_run",
+  "accepted_baseline_status": "matched",
+  "generated_output_hashes": {
+    "data_pipeline/raw/annex_ii_raw.json": "3f04d6f284d24bfd962927cdf90e5415d7f6ce73d399da5725cfa51263c71074",
+    "data_pipeline/raw/annex_iii_raw.json": "12f033089caa707f6b9027f93821ce2739942380f969212ef36c8925641d061c",
+    "data_pipeline/raw/appendix_i_raw.json": "fcea6feb2c75e174e130af527c34deb34cbb35094c1c0dc0803ae7c45d060565",
+    "data_pipeline/raw/singapore_regulation_6_raw.json": "afc1abd9b962a1fe9055fdf3ccfed483d1fd81286c3d6f1d3e7589dd821fc7cd",
+    "data_pipeline/raw/singapore_third_schedule_part_i_raw.json": "d62d56f2626aeb5c5a6008672c1dbe90d37e4b2243272d643af5454626a8f7f5",
+    "data_pipeline/raw/singapore_third_schedule_part_ii_raw.json": "0783b10a6c19358c366120a0c95ce19eeb32b0d02d39a8e3bc36197af4d49f94",
+    "data_pipeline/raw/source_manifest.json": "df382c9fafcecb415cb927f767c1fbc801e15b9c3b967d1c0dc7ba450c571edd",
+    "data_pipeline/processed/product_context.json": "1656e0a29ce57c192972ae7049011ad6d49a00a23be052f4a63096178dffaf3c",
+    "data_pipeline/processed/rules.json": "ac2deb624fd2ba2534c6c9020bea7f15b72eca8779c7c5b0554c18c5fc1d40c5",
+    "data_pipeline/processed/singapore_provisions.json": "17ecb55a10834874bc6f56c401bcb6ad25a026b7b6b6c8ff161210b6e0ad3a16",
+    "data_pipeline/processed/source_cross_references.json": "1d8ae66edf4222e7871324a6257f3858e24b7f71caed7fa05bab7889816b2157",
+    "data_pipeline/processed/substances.json": "7394fdca1c2cc0640d261aae335f4045ace8062dd520b8a888d585b44797ef6a"
+  }
+}

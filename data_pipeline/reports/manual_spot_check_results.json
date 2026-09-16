@@ -1,0 +1,33 @@
+{
+  "dataset_version": "acd-2026-1__sg-2025-12-01",
+  "completed_date": "2026-09-15",
+  "method": "Rendered-page visual comparison against the immutable source PDFs, followed by raw and normalized JSON inspection.",
+  "accepted_baseline_sha256": "8dc52418c1360074a52221966cd3e74e1dcd108233d8ad8045797a6c34e25017",
+  "summary": {
+    "total": 20,
+    "passed": 20,
+    "failed": 0
+  },
+  "results": [
+    {"check_id": "spot-01", "result": "PASS", "evidence_checked": "ACD Appendix I page 2", "notes": "Category wording and the explicitly non-exhaustive list were preserved."},
+    {"check_id": "spot-02", "result": "PASS", "evidence_checked": "ACD Appendix I page 2", "notes": "The hair-care category and all six nested examples were preserved."},
+    {"check_id": "spot-03", "result": "PASS", "evidence_checked": "Singapore Regulation 6 PDF page 2", "notes": "Paragraph 6(1), including trace, technical-unavoidability, and GMP wording, matches the source."},
+    {"check_id": "spot-04", "result": "PASS", "evidence_checked": "Singapore Regulation 6 PDF pages 2-3", "notes": "Paragraph 6(2) and its Part II column semantics match the source across the page break."},
+    {"check_id": "spot-05", "result": "PASS", "evidence_checked": "Singapore Regulation 6 PDF page 4", "notes": "Paragraph 6(7) and the unwholesome-product consequence match the source."},
+    {"check_id": "spot-06", "result": "PASS", "evidence_checked": "ACD Annex II page 2", "notes": "A1140 retains the conditional 0.1% unavoidable-trace wording and is now marked for review."},
+    {"check_id": "spot-07", "result": "PASS", "evidence_checked": "ACD Annex II pages 14-15", "notes": "Reference 391 is joined across pages without losing the Annex III and Annex IV exceptions."},
+    {"check_id": "spot-08", "result": "PASS", "evidence_checked": "ACD Annex II page 16 and supporting pages 98-101", "notes": "Reference 419 and all four pages of category definitions remain linked as supporting evidence."},
+    {"check_id": "spot-09", "result": "PASS", "evidence_checked": "ACD Annex II pages 74-82", "notes": "Reference 1539 retains its substance condition and the full nine-page CAS sequence through item 177."},
+    {"check_id": "spot-10", "result": "PASS", "evidence_checked": "ACD Annex II page 96", "notes": "Reference 1711 preserves source CAS text 607-285-6 and flags it as malformed rather than changing it."},
+    {"check_id": "spot-11", "result": "PASS", "evidence_checked": "ACD Annex III page 106", "notes": "Reference 6 maps toothpaste to 5% and other uses to 3% as two unambiguous child rules."},
+    {"check_id": "spot-12", "result": "PASS", "evidence_checked": "ACD Annex III page 108", "notes": "Reference 8a recovers line-wrapped CAS 16245-77-5 and retains the 2% after-mixing limit and warnings."},
+    {"check_id": "spot-13", "result": "PASS", "evidence_checked": "ACD Annex III pages 113-114", "notes": "Reference 12 retains nested product, concentration, supply, and warning cases and remains manual review."},
+    {"check_id": "spot-14", "result": "PASS", "evidence_checked": "ACD Annex III page 114", "notes": "Reference 13 retains the 2.2% formaldehyde basis, Lao PDR limitation, and label warning."},
+    {"check_id": "spot-15", "result": "PASS", "evidence_checked": "ACD Annex III pages 181-182", "notes": "Reference 250 retains its headerless continuation, both use cases, limits, nitrosamine condition, and continued warning."},
+    {"check_id": "spot-16", "result": "PASS", "evidence_checked": "ACD Annex III page 215", "notes": "Reference 288 retains Singapore-specific non-preservative wording and the 0.3%/0.2% cases."},
+    {"check_id": "spot-17", "result": "PASS", "evidence_checked": "ACD Annex III page 252", "notes": "Reference 339 retains both product cases, both limits, UV restriction, and 50 microgram/kg nitrosamine condition."},
+    {"check_id": "spot-18", "result": "PASS", "evidence_checked": "ACD Annex III page 252", "notes": "Reference 342 is correctly split into mouthwash 0.001%, toothpaste 0.1%, and other products 1%."},
+    {"check_id": "spot-19", "result": "PASS", "evidence_checked": "Singapore Third Schedule page 13", "notes": "Part I A1140 retains Singapore's exact finished-product trace wording and is kept separate from ACD wording."},
+    {"check_id": "spot-20", "result": "PASS", "evidence_checked": "Singapore Third Schedule pages 165-166", "notes": "Part II reference 339 joins both pages and retains separate (a)/(b) limits and conditions."}
+  ]
+}

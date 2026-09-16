@@ -1,0 +1,254 @@
+{
+  "dataset_version": "acd-2026-1__sg-2025-12-01",
+  "check_count": 20,
+  "checks": [
+    {
+      "check_id": "spot-01",
+      "source_document": "acd_appendix_i",
+      "regulatory_section": "Appendix I",
+      "reference_number": "appendix-i-category-01",
+      "source_pages": [
+        2
+      ],
+      "source_text": "Creams, emulsions, lotions, gels and oils for the skin (hands, face, feet, etc.).",
+      "verification_focus": "definition/category wording and bullet hierarchy"
+    },
+    {
+      "check_id": "spot-02",
+      "source_document": "acd_appendix_i",
+      "regulatory_section": "Appendix I",
+      "reference_number": "appendix-i-category-10",
+      "source_pages": [
+        2
+      ],
+      "source_text": "Hair care products. | hair tints and bleaches, | products for waving, straightening and fixing, | setting products, | cleansing products (lotions, powders, shampoos), | conditioning products (lotions, creams, oils), | hairdressing products (lotions, lacquers, brilliantines).",
+      "verification_focus": "nested hair-care subcategories"
+    },
+    {
+      "check_id": "spot-03",
+      "source_document": "singapore_regulation_6_excerpt",
+      "regulatory_section": "Regulation 6",
+      "reference_number": "1",
+      "source_pages": [
+        2
+      ],
+      "source_text": "6.—(1)  A cosmetic product shall not contain any substance that is listed in Part I of \nthe Third Schedule unless the presence of such substance —\n(a) is in trace amount;\n(b) is technically unavoidable in good manufacturing practice; or\n(c) where applicable, is in compliance with the conditions specified in that \nPart of that Schedule.\n[S 9/2023 wef 01/02/2023]",
+      "verification_focus": "Part I prohibition and trace/GMP conditions"
+    },
+    {
+      "check_id": "spot-04",
+      "source_document": "singapore_regulation_6_excerpt",
+      "regulatory_section": "Regulation 6",
+      "reference_number": "2",
+      "source_pages": [
+        2,
+        3
+      ],
+      "source_text": "(2)  A cosmetic product shall not contain any substance that is listed in the second \ncolumn of Part II of the Third Schedule unless —\n(a) the cosmetic product is of a type listed in the third column of that Part of \nthat Schedule;\n(b) the substance as contained in the cosmetic product does not exceed the \nappropriate limit as specified in the fourth column of that Part of that \nSchedule; and\n(c) the cosmetic product complies with the other relevant requirements as \nspecified in the fifth column of that Part of that Schedule.\n[S 9/2023 wef 01/02/2023]",
+      "verification_focus": "Part II product type, limit, and other requirements"
+    },
+    {
+      "check_id": "spot-05",
+      "source_document": "singapore_regulation_6_excerpt",
+      "regulatory_section": "Regulation 6",
+      "reference_number": "7",
+      "source_pages": [
+        4
+      ],
+      "source_text": "(7)  For the purposes of section 2 (2)(d)(iv) of the Act, a cosmetic product that does \nnot comply with paragraph (1), (2), (3), (4) or (5) shall be considered to be an \nunwholesome cosmetic product.\n[S 9/2023 wef 01/02/2023]",
+      "verification_focus": "unwholesome-product legal effect"
+    },
+    {
+      "check_id": "spot-06",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex II Part 1",
+      "reference_number": "A1140",
+      "source_pages": [
+        2
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-ii-part-1-a1140",
+      "source_text": "Diethylene glycol (except if it is present as unavoidable trace limit\nof 0.1% in finished product) | 111-46-6 | A1140",
+      "verification_focus": "prohibited entry containing an explicit trace exception"
+    },
+    {
+      "check_id": "spot-07",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex II Part 1",
+      "reference_number": "391",
+      "source_pages": [
+        14,
+        15
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-ii-part-1-391",
+      "source_text": "Zirconium and its compounds, with the exception of the\nsubstances listed under reference number 50 in Annex III, Part | 7440-67-7 | 391\n1, and the zirconium lakes, pigments and salts of the colouring\nagents listed in Annex IV, Part 1 |  |",
+      "verification_focus": "entry continued across a page boundary"
+    },
+    {
+      "check_id": "spot-08",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex II Part 1",
+      "reference_number": "419",
+      "source_pages": [
+        16
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-ii-part-1-419",
+      "source_text": "Category 1 material and Category 2 material as defined in\nASEAN definition of animal products. | - | 419",
+      "verification_focus": "entry linked to supporting animal definitions"
+    },
+    {
+      "check_id": "spot-09",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex II Part 1",
+      "reference_number": "1539",
+      "source_pages": [
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-ii-part-1-1539",
+      "source_text": "Petroleum, coal, tar and natural gas and their derivatives\ngenerated using distillation and/or other processing methods if\nthey contain ≥ 0,1 % w/w benzene | 85536-20-5\n[1];\n85536-19-2\n[2];\n90641-12-6 | 1539\n | [3];\n90989-38-1\n[4];\n91995-20-9\n[5];\n92062-36-7\n[6];\n91995-61-8 [7];\n101316-63-6\n[8];\n93821-38-6 [9];\n90641-02-4\n[10];\n101316-62-5\n[11];\n90641-03-5\n[12];\n65996-79-4\n[13];\n101794-90-5\n[14];\n90640-87-2\n[15];\n84650-03-3\n[16];\n65996-82-9\n[17];\n90641-01-3\n[18];\n65996-87-4\n[19];\n90640-99-6\n[20];\n68391-11-7\n[21];\n92062-33-4\n[22];\n91082-52-9\n[23];\n68937-63-3\n[24];\n92062-28-7\n[25];\n92062-27-6\n[26]; | \n | 91082-53-0\n[27];\n91995-31-2\n[28];\n91995-35-6\n[29];\n91995-66-3\n[30];\n122070-79-5\n[31];\n122070-80-8\n[32];\n65996-78-3\n[33];\n94114-52-0\n[34];\n94114-53-1\n[35];\n94114-54-2\n[36];\n94114-56-4\n[37];\n94114-57-5\n[38];\n90641-11-5\n[39];\n8006-61-9 [40];\n8030-30-6 [41];\n8032-32-4 [42];\n64741-41-9\n[43];\n64741-42-0\n[44];\n64741-46-4\n[45];\n64742-89-8\n[46];\n68410-05-9\n[47];\n68514-15-8\n[48];\n68606-11-1\n[49];\n68783-12-0\n[50]; | \n | 68921-08-4\n[51];\n101631-20-3\n[52];\n64741-64-6\n[53];\n64741-65-7\n[54];\n64741-66-8\n[55];\n64741-70-4\n[56];\n64741-84-0\n[57];\n64741-92-0\n[58];\n68410-71-9\n[59];\n68425-35-4\n[60];\n68527-27-5\n[61];\n91995-53-8\n[62];\n92045-49-3\n[63];\n92045-55-1\n[64];\n92045-58-4\n[65];\n92045-64-2\n[66];\n101316-67-0\n[67];\n64741-54-4\n[68];\n64741-55-5\n[69];\n68476-46-0\n[70];\n68783-09-5\n[71];\n91995-50-5\n[72];\n92045-50-6\n[73]; | \n | 92045-59-5\n[74];\n92128-94-4\n[75];\n101794-97-2\n[76];\n101896-28-0\n[77];\n64741-63-5\n[78];\n64741-68-0\n[79];\n68475-79-6\n[80];\n68476-47-1\n[81];\n68478-15-9\n[82];\n68513-03-1\n[83];\n68513-63-3\n[84];\n68514-79-4\n[85];\n68919-37-9\n[86];\n68955-35-1\n[87];\n85116-58-1\n[88];\n91995-18-5\n[89];\n93571-75-6\n[90];\n93572-29-3\n[91];\n93572-35-1\n[92];\n93572-36-2\n[93];\n64741-74-8\n[94];\n64741-83-9\n[95];\n67891-79-6\n[96]; | \n | 67891-80-9\n[97];\n68425-29-6\n[98];\n68475-70-7\n[99];\n68603-00-9\n[100];\n68603-01-0\n[101];\n68603-03-2\n[102];\n68955-29-3\n[103];\n92045-65-3\n[104];\n64742-48-9\n[105];\n64742-49-0\n[106];\n64742-73-0\n[107];\n68410-96-8\n[108];\n68410-97-9\n[109];\n68410-98-0\n[110];\n68512-78-7\n[111];\n85116-60-5\n[112];\n85116-61-6\n[113];\n92045-51-7\n[114];\n92045-52-8\n[115];\n92045-57-3\n[116];\n92045-61-9\n[117];\n92062-15-2\n[118];\n93165-55-0\n[119]; | \n | 93763-33-8\n[120];\n93763-34-9\n[121];\n64741-47-5\n[122];\n64741-48-6\n[123];\n64741-69-1\n[124];\n64741-78-2\n[125];\n64741-87-3\n[126];\n64742-15-0\n[127];\n64742-22-9\n[128];\n64742-23-0\n[129];\n64742-66-1\n[130];\n64742-83-2\n[131];\n64742-95-6\n[132];\n68131-49-7\n[133];\n68477-34-9\n[134];\n68477-50-9\n[135];\n68477-53-2\n[136];\n68477-55-4\n[137];\n68477-61-2\n[138];\n68477-89-4\n[139];\n68478-12-6\n[140];\n68478-16-0\n[141];\n68513-02-0\n[142]; | \n | 68516-20-1\n[143];\n68527-21-9\n[144];\n68527-22-0\n[145];\n68527-23-1\n[146];\n68527-26-4\n[147];\n68603-08-7\n[148];\n68606-10-0\n[149];\n68783-66-4\n[150];\n68919-39-1\n[151];\n68921-09-5\n[152];\n85116-59-2\n[153];\n86290-81-5\n[154];\n90989-42-7\n[155];\n91995-38-9\n[156];\n91995-41-4\n[157];\n91995-68-5\n[158];\n92045-53-9\n[159];\n92045-60-8\n[160];\n92045-62-0\n[161];\n92045-63-1\n[162];\n92201-97-3\n[163];\n93165-19-6\n[164];\n94114-03-1\n[165]; | \n | 95009-23-7\n[166];\n97926-43-7\n[167];\n98219-46-6\n[168];\n98219-47-7\n[169];\n101316-56-7\n[170];\n101316-66-9\n[171];\n101316-76-1\n[172];\n101795-01-1\n[173];\n102110-14-5\n[174];\n68476-50-6\n[175];\n68476-55-1\n[176];\n90989-39-2\n[177] |",
+      "verification_focus": "very long entry spanning nine pages"
+    },
+    {
+      "check_id": "spot-10",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex II Part 1",
+      "reference_number": "1711",
+      "source_pages": [
+        96
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-ii-part-1-1711",
+      "source_text": "Fluopicolide (ISO); 2,6-dichloro-N-[3-chloro- 5-(trifluoromethyl)-\n2-pyridylmethyl]benzamide | 607-285-6 | 1711",
+      "verification_focus": "late-table entry and CAS extraction"
+    },
+    {
+      "check_id": "spot-11",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex III Part 1",
+      "reference_number": "6",
+      "source_pages": [
+        106
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-iii-part-1-6",
+      "source_text": "6 | Chlorates of alkali metals\nSodium Chlorate\nCAS No 7775-09-9\nPotassium Chlorate\nCAS No 3811-04-9 | (a) Toothpaste\n(b) Other uses | (a) 5%\n(b) 3% |  |",
+      "verification_focus": "clear multi-case split"
+    },
+    {
+      "check_id": "spot-12",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex III Part 1",
+      "reference_number": "8a",
+      "source_pages": [
+        108
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-iii-part-1-8a",
+      "source_text": "8a | p-Phenylenediamine and its salts\np-Phenylenediamine;\np-Phenylenediamine HCl;\np-Phenylenediamine Sulphate\nCAS No 106-50-3 / 624-18-0 / 16245-\n77-5 | Hair dye substance in\noxidative hair dye products\nUse for dyeing eyelashes\nand eyebrows is not\npermitted. |  | After mixing under\noxidative conditions the\nmaximum concentration\napplied to hair must not\nexceed 2 % calculated as\nfree base\nThe direction for use “wear\nsuitable gloves” must be\nincluded in label or leaflet\ntext. | To be printed on the label\nThe mixing ratio.\n“Hair colourants can cause\nsevere allergic reactions.\nRead and follow instructions.\nThis product is not intended for use\non persons under the age of 16.\nTemporary “black henna” tattoos\nmay increase your risk of allergy.\nDo not colour your hair if:\n- you have a rash on your face or\nsensitive, irritated and damaged\nscalp,\n- you have ever experienced any\nreaction after colouring your hair,\n- you have experienced a reaction\nto a temporary “black henna”\ntattoo in the past.\nContains phenylenediamines.\nDo not use to dye eyelashes or\neyebrows.’",
+      "verification_focus": "limit stated in other requirements after mixing"
+    },
+    {
+      "check_id": "spot-13",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex III Part 1",
+      "reference_number": "12",
+      "source_pages": [
+        113,
+        114
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-iii-part-1-12",
+      "source_text": "12 | Hydrogen peroxide, and other\ncompounds or mixtures that release\nhydrogen peroxide, including\ncarbamide peroxide and zinc peroxide,\nwith the exception of the following\nsubstances in Annex II: No. 1397,\n1398, 1399\nCAS No 7722-84-1 | (a) Hair products\n(b) Skin products\n(c) Nail hardening products\n(d) Oral Hygiene products,\nincluding mouth rinse,\ntoothpaste.\n(e) Tooth whitening or\nbleaching products\n(i) For general consumer\nuse\n(ii) For use by the\nconsumer under the\nsupervision of a\nqualified dental\npractitioner\n(iii) For application by a\nqualified dental\npractitioner only | (a) 12% of H O (40 volumes),\n2 2\npresent or released\n(b) 4% of H O , present or\n2 2\nreleased\n(c) 2% of H O , present or\n2 2\nreleased\n(d) 0.1 % of H O , present or\n2 2\nreleased\n(e)\n(i) 0.1% H O present or\n2 2\nreleased\n(ii) >0.1 to < 6% H O\n2 2\npresent or released\n(iii) >6% to 35% H O\n2 2\npresent or released\nThailand Only:\nTooth whitening products\nwith >6% H O present or\n2 2\nrelease is regulated as\nMedical Device. | (e)\n(ii) For supply only through\na qualified dental\npractitioner. Not for direct\nsale to the general public.\niii) Only to be used by a\nqualified dental\npractitioner. Not for direct\nsale to the general public. | For (a) Wear suitable gloves\nFor (a) (b) (c) and (e):\nContains hydrogen peroxide.\nAvoid contact with eyes.\nRinse immediately if product comes\ninto contact with them.\n(e) (ii) and (iii)\nTo be printed on the label\nNot to be used on a person under 18\nyears of age.\nPercentage of Hydrogen Peroxide to\nbe declared.\n(ii) Not for direct sale to the public.\nFor supply only through qualified\ndental practitioner.\nRead & follow the instructions and\nuse the product accordingly.\nDo not use the product within two\nweeks prior to, or immediately after\ndental restoration. Not for use by\npregnant women or habitual tobacco\nand/or alcohol users. Stop using\nimmediately if you experience any\ntooth sensitivity, gum irritation,\ntoothache, defective restorations,\ngingivitis, nausea etc. Store out of\nreach of children.\n(iii) Not for direct sale to the public.\nOnly to be used by a qualified dental\npractitioner.\n |  |  |  |  | Do not use the product within two\nweeks prior to, or immediately after\ndental restoration. Not for use by\npregnant women or habitual tobacco\nand/or alcohol users. Stop using\nimmediately in cases of tooth\nsensitivity, gum irritation, toothache,\ndefective restorations, gingivitis,\nnausea etc.",
+      "verification_focus": "complex nested cases retained for review"
+    },
+    {
+      "check_id": "spot-14",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex III Part 1",
+      "reference_number": "13",
+      "source_pages": [
+        114
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-iii-part-1-13",
+      "source_text": "13 | Formaldehyde\nCAS No 50-00-0 | Nail hardening products | 2.2% calculated as\nformaldehyde | Allowed only in Lao PDR | Protects cuticles with grease or oil.\nContains formaldehyde (2(",
+      "verification_focus": "warning/condition extraction"
+    },
+    {
+      "check_id": "spot-15",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex III Part 1",
+      "reference_number": "250",
+      "source_pages": [
+        181,
+        182
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-iii-part-1-250",
+      "source_text": "250\n(248) | 4-[(2-Hydroxyethyl)amino]-3-\nnitrophenol\n3-Nitro-p-hydroxyethylaminophenol\nCAS No 65235-31-6 | (a) Hair dye substance in\noxidative hair dye\nproducts\n(b) Hair dye substance in\nnon-oxidative hair dye\nproducts\nUse for dyeing eyelashes\nand eyebrows is not\npermitted. | b) 1.85 % | (a) After mixing under\noxidative conditions the\nmaximum concentration\napplied to hair must not\nexceed 3.0 %\nFor (a) and (b):\n• Do not use with\nnitrosating agents\n• Maximum\nnitrosamine\ncontent: 50\nμg/kg(21)\n• Keep in nitrite-\nfree containers\nThe direction for use “wear\nsuitable gloves” must be\nincluded in label or leaflet\ntext. | a) The mixing ratio must be printed\non the label.\nHair colorants can cause\nsevere allergic reactions.\nRead and follow instructions.\nThis product is not intended for use\non persons under the age of 16.\nTemporary “black henna” tattoos\nmay increase your risk of allergy\nDo not colour your hair if:\n• you have a rash on your face or\nsensitive, irritated and damaged\nscalp,\n• you have ever experienced any\nreaction after colouring your hair,\n• you have experienced a reaction\nto a temporary “black henna”\ntattoo in the past\nDo not use to dye eyelashes or\neyebrows\n(b)\nHair colorants can cause severe\nallergic reactions.\nRead and follow instructions.\nThis product is not intended for use\non persons under the age of 16.\nDo not use to dye eyelashes or\neyebrows\n |  |  |  |  | Temporary “black henna” tattoos\nmay increase your risk of allergy.\nDo not colour your hair if:\n• you have a rash on your face or\nsensitive, irritated and damaged\nscalp,\n• you have ever experienced any\nreaction after colouring your hair,\n• you have experienced a reaction\nto a temporary “black henna”\ntattoo in the past",
+      "verification_focus": "headerless page and continued row"
+    },
+    {
+      "check_id": "spot-16",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex III Part 1",
+      "reference_number": "288",
+      "source_pages": [
+        215
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-iii-part-1-288",
+      "source_text": "288\n(Annex VI -\n25) | 5-Chloro-2- (2,4- dichlorophenoxy)\nphenol\nTriclosan\nCAS No 3380-34-5\nSingapore: Not permitted for non-\npreservative use. | (a) Toothpastes\nHand soaps\nBody soaps/Shower gels\nDeodorants (non-spray)\nFace powders and blemish\nconcealers\nNail products for cleaning the\nfingernails and toenails\nbefore the application of\nartificial nail systems\nShampoos\nHair Conditioners\nFacial Cleansers\n(b) Mouthwashes | (a) 0.3 %\n(b) 0.2 % |  |",
+      "verification_focus": "Singapore-specific source wording"
+    },
+    {
+      "check_id": "spot-17",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex III Part 1",
+      "reference_number": "339",
+      "source_pages": [
+        252
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-iii-part-1-339",
+      "source_text": "339\n(323) | Methyl-N-methylanthranilate\nCas No 85-91-6 | (a) Leave-on products\n(b) Rinse-off products | (a) 0.1 %\n(b) 0.2 % | For (a): Not to be used in\nsunscreen products and\nproducts marketed for\nexposure to natural or\nartificial UV light. (22)\nFor (a) and (b):\n— Do not use with\nnitrosating agents\n— Maximum nitrosamine\ncontent: 50 μg/kg\n— Keep in nitrite-free\ncontainers |",
+      "verification_focus": "six-column extraction on page 252"
+    },
+    {
+      "check_id": "spot-18",
+      "source_document": "acd_annexes_2026_1",
+      "regulatory_section": "Annex III Part 1",
+      "reference_number": "342",
+      "source_pages": [
+        252
+      ],
+      "raw_record_id": "raw-acd_annexes_2026_1-annex-iii-part-1-342",
+      "source_text": "342 | 2,6-Di-Tert-Butyl-4-Methylphenol\nButylated Hydroxytoluene\n128-37-0 | a) Mouthwash\nb) Toothpaste\nc) Other leave-on and rinse-\noff products | a) 0.001 %\nb) 0.1 %\nc) 1 % |  |",
+      "verification_focus": "three clearly mapped cases"
+    },
+    {
+      "check_id": "spot-19",
+      "source_document": "singapore_regulations_2025_12_01",
+      "regulatory_section": "Third Schedule Part I",
+      "reference_number": "A1140",
+      "source_pages": [
+        13
+      ],
+      "raw_record_id": "raw-singapore_regulations_2025_12_01-third-schedule-part-i-a1140",
+      "source_text": "A1140 | Diethylene glycol (except if it is present as an unavoidable trace\namount up to a limit of 0.1% in the finished cosmetic product)",
+      "verification_focus": "Singapore wording compared with ACD source"
+    },
+    {
+      "check_id": "spot-20",
+      "source_document": "singapore_regulations_2025_12_01",
+      "regulatory_section": "Third Schedule Part II",
+      "reference_number": "339",
+      "source_pages": [
+        165,
+        166
+      ],
+      "raw_record_id": "raw-singapore_regulations_2025_12_01-third-schedule-part-ii-339",
+      "source_text": "339 | Methyl-N-methylanthranilate | (a) Leave-on products | (a) 0.1% | (a) Not to be used\nin sunscreen\nproducts and\nproducts\nmarketed for\nexposure to\nnatural or\nartificial UV\nlight11\n— Do not use\nwith\nnitrosating\nagents\n— Maximum\nnitrosamine\ncontent: 50\nμg/kg | \n |  |  |  | — Keep in nitrite-\nfree containers | \n |  | (b) Rinse-off products | (b) 0.2% | (b)\n— Do not use\nwith\nnitrosating\nagents\n— Maximum\nnitrosamine\ncontent: 50\nμg/kg\n— Keep in nitrite-\nfree containers |",
+      "verification_focus": "Singapore restricted entry continued across pages"
+    }
+  ]
+}
