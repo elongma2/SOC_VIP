@@ -27,6 +27,24 @@ class IdentityStatus(StrEnum):
     REVIEW_REQUIRED = "review_required"
 
 
+class ReviewType(StrEnum):
+    IDENTITY = "identity_review"
+    RULE = "rule_review"
+
+
+class IdentitySourceType(StrEnum):
+    SINGAPORE_REGULATORY = "singapore_regulatory_source"
+    ACD_REGULATORY = "acd_regulatory_source"
+    INGREDIENT_CATALOGUE = "ingredient_identity_catalogue"
+
+
+class SingaporeLinkageStatus(StrEnum):
+    NOT_APPLICABLE = "not_applicable"
+    LINKED = "linked"
+    VERIFIED_NOT_REPRESENTED = "verified_not_represented"
+    UNRESOLVED = "unresolved"
+
+
 class ConcentrationInput(StrictModel):
     value: float = Field(ge=0, allow_inf_nan=False)
     unit: str = Field(min_length=1)
@@ -72,12 +90,65 @@ class IdentityCandidate(StrictModel):
     cross_reference_statuses: list[str] = Field(default_factory=list)
 
 
+class CatalogueIdentity(StrictModel):
+    ingredient_id: str
+    canonical_name: str
+    source_name: str
+    source_document: str
+    source_version: str
+    source_url: str
+    source_entries: list[int]
+    source_pages: list[int]
+    raw_record_ids: list[str]
+    identity_dataset_version: str
+    accepted_baseline_sha256: str
+
+
+class LinkageTarget(StrictModel):
+    raw_record_id: str
+    rule_id: str
+    substance_id: str
+    part: str
+    reference: str
+    source_substance_name: str
+    source_document: str
+    source_hash: str
+
+
+class LinkageReview(StrictModel):
+    reviewed: bool
+    reviewed_at: str
+    reviewer: str
+    review_basis: str
+    notes: str
+
+
+class LinkageEvidence(StrictModel):
+    linkage_id: str
+    accepted_status: SingaporeLinkageStatus
+    applicable_to_active_baseline: bool
+    identity_dataset_version: str
+    identity_dataset_hash: str
+    singapore_regulatory_baseline: str
+    singapore_regulatory_baseline_hash: str
+    screened_scope: list[str]
+    singapore_targets: list[LinkageTarget] = Field(default_factory=list)
+    review: LinkageReview
+    inapplicability_reasons: list[str] = Field(default_factory=list)
+
+
 class IdentityResolution(StrictModel):
     status: IdentityStatus
     match_methods: list[str] = Field(default_factory=list)
     singapore_candidates: list[IdentityCandidate] = Field(default_factory=list)
     acd_candidates: list[IdentityCandidate] = Field(default_factory=list)
     resolved_singapore_substance_id: str | None = None
+    resolved_singapore_substance_ids: list[str] = Field(default_factory=list)
+    identity_source_type: IdentitySourceType | None = None
+    identity_source_name: str | None = None
+    singapore_linkage_status: SingaporeLinkageStatus = SingaporeLinkageStatus.NOT_APPLICABLE
+    catalogue_identity: CatalogueIdentity | None = None
+    linkage_evidence: LinkageEvidence | None = None
     reasons: list[str] = Field(default_factory=list)
 
 
@@ -126,6 +197,7 @@ class ScreeningResult(StrictModel):
     primary_finding: Finding
     confirmed_findings: list[Finding] = Field(default_factory=list)
     review_required: bool
+    review_types: list[ReviewType] = Field(default_factory=list)
     review_reasons: list[str] = Field(default_factory=list)
     rule_evaluations: list[RuleEvaluation] = Field(default_factory=list)
     inactive_evidence: list[RuleEvidence] = Field(default_factory=list)
@@ -134,3 +206,13 @@ class ScreeningResult(StrictModel):
         "This is an initial Singapore screening result within the implemented rules only; "
         "professional review remains required."
     )
+
+    @model_validator(mode="after")
+    def require_review_details(self) -> "ScreeningResult":
+        if self.review_required and (not self.review_types or not self.review_reasons):
+            raise ValueError("Review-required results must include review types and reasons")
+        if not self.review_required and self.review_types:
+            raise ValueError("Review types require review_required=true")
+        self.review_types = list(dict.fromkeys(self.review_types))
+        self.review_reasons = list(dict.fromkeys(self.review_reasons))
+        return self

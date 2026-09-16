@@ -1,4 +1,4 @@
-import type { FieldIssue, FormulationRequest, ScreeningOptions, ScreeningResponse } from "../types/screening";
+import type { FieldIssue, FormulationRequest, IngredientSearchResponse, ScreeningOptions, ScreeningResponse } from "../types/screening";
 
 const configuredBase = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const apiBase = configuredBase.replace(/\/$/, "");
@@ -55,4 +55,8 @@ export function screenFormulation(request: FormulationRequest): Promise<Screenin
     method: "POST",
     body: JSON.stringify(request),
   });
+}
+
+export function searchIngredients(query: string, signal?: AbortSignal): Promise<IngredientSearchResponse> {
+  return requestJson<IngredientSearchResponse>(`/ingredients?query=${encodeURIComponent(query)}&limit=20`, { signal });
 }

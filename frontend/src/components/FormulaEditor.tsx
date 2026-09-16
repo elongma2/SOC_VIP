@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from "lucide-react";
 import { HelpHint } from "./HelpHint";
 import { preparationStageLabel } from "../lib/presentation";
+import { IngredientCombobox } from "./IngredientCombobox";
 import type {
   ConcentrationBasis,
   EditorIngredient,
@@ -92,13 +93,14 @@ export function FormulaEditor(props: FormulaEditorProps) {
         </label>
         <div className="field-label">
           <div className="flex items-center gap-1.5">
-            <span>Product context <span className="optional-label">Optional</span></span>
+            <span>Product context</span>
             <HelpHint label="Product context">
               <p>What type or use of cosmetic product is this? Some ingredient restrictions apply only to specific product types.</p>
               <p className="mt-2">Why this matters: the same ingredient may have different restrictions depending on the product type. Examples in the accepted options include All products, Rinse-off products, and Artificial nail systems.</p>
               <p className="mt-2">Only the exact selected value is used. The system does not infer a category.</p>
             </HelpHint>
           </div>
+          <span className="optional-label">Optional</span>
           <select
             aria-label="Product context"
             className="field-control"
@@ -132,13 +134,12 @@ export function FormulaEditor(props: FormulaEditorProps) {
           {props.ingredients.map((ingredient, index) => (
             <div className="ingredient-grid ingredient-row" key={ingredient.id}>
               <div>
-                <input
-                  aria-label={`Ingredient ${index + 1} name`}
-                  className={`field-control ${issueFor(index, "name") ? "field-error" : ""}`}
+                <IngredientCombobox
+                  rowNumber={index + 1}
                   value={ingredient.name}
                   disabled={props.disabled}
-                  onChange={(event) => updateRow(index, { name: event.target.value })}
-                  placeholder="Ingredient name"
+                  invalid={Boolean(issueFor(index, "name"))}
+                  onChange={(value) => updateRow(index, { name: value })}
                 />
                 {issueFor(index, "name") && <p className="input-error">{issueFor(index, "name")}</p>}
               </div>

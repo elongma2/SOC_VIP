@@ -1,0 +1,124 @@
+{
+  "accepted_baseline_sha256": "8dc52418c1360074a52221966cd3e74e1dcd108233d8ad8045797a6c34e25017",
+  "verified_on": "2026-09-16",
+  "scenarios": [
+    {
+      "scenario": "Mixed finding coverage",
+      "request": {
+        "formulation_id": "DEMO-01",
+        "formulation_name": "Mixed finding coverage",
+        "ingredients": [
+          { "name": "Aminophylline", "concentration": null },
+          { "name": "Benzene", "concentration": null },
+          { "name": "Dioxane", "concentration": null },
+          {
+            "name": "Tosylchloramide sodium",
+            "concentration": { "value": 0.1, "unit": "percent", "basis": null, "preparation_stage": "finished_product" }
+          },
+          {
+            "name": "Tosylchloramide sodium",
+            "concentration": { "value": 0.21, "unit": "percent", "basis": null, "preparation_stage": "finished_product" }
+          },
+          { "name": "Tosylchloramide sodium", "concentration": null },
+          {
+            "name": "Tosylchloramide sodium",
+            "concentration": { "value": 0.1, "unit": "percent", "basis": null, "preparation_stage": "ready_for_use" }
+          },
+          {
+            "name": "Diethylene glycol (except if it is present as an unavoidable trace amount up to a limit of 0.1% in the finished cosmetic product)",
+            "concentration": { "value": 0.05, "unit": "percent", "basis": null, "preparation_stage": "finished_product" }
+          },
+          {
+            "name": "BHT",
+            "cas_number": "128-37-0",
+            "concentration": { "value": 0.1, "unit": "percent", "basis": null, "preparation_stage": "finished_product" }
+          },
+          { "name": "Aminophylline", "cas_number": "128-37-0", "concentration": null },
+          { "name": "Aqua", "concentration": null },
+          { "name": "Mystery Extract", "concentration": null },
+          { "name": "Diethylene glycol", "concentration": null }
+        ]
+      },
+      "expected_primary_findings": [
+        "prohibited_substance_identified",
+        "prohibited_substance_identified",
+        "prohibited_substance_identified",
+        "restriction_within_limit",
+        "restriction_exceeded",
+        "information_missing",
+        "professional_review_required",
+        "professional_review_required",
+        "professional_review_required",
+        "professional_review_required",
+        "professional_review_required",
+        "identity_unresolved",
+        "professional_review_required"
+      ]
+    },
+    {
+      "scenario": "Toothpaste context",
+      "request": {
+        "formulation_id": "DEMO-02",
+        "formulation_name": "Toothpaste context checks",
+        "product_context": "Toothpaste",
+        "ingredients": [
+          {
+            "name": "Chlorates of alkali metals",
+            "concentration": { "value": 4, "unit": "percent", "basis": null, "preparation_stage": "finished_product" }
+          },
+          {
+            "name": "Chlorates of alkali metals",
+            "concentration": { "value": 6, "unit": "percent", "basis": null, "preparation_stage": "finished_product" }
+          },
+          { "name": "Chlorates of alkali metals", "concentration": null }
+        ]
+      },
+      "expected_primary_findings": [
+        "restriction_within_limit",
+        "restriction_exceeded",
+        "information_missing"
+      ]
+    },
+    {
+      "scenario": "Resolved identity with no applicable scoped rule",
+      "request": {
+        "formulation_id": "DEMO-03",
+        "formulation_name": "Context-inapplicable restriction",
+        "product_context": "Artificial nail systems",
+        "ingredients": [
+          {
+            "name": "Chlorates of alkali metals",
+            "concentration": { "value": 4, "unit": "percent", "basis": null, "preparation_stage": "finished_product" }
+          },
+          { "name": "Chlorates of alkali metals", "concentration": null }
+        ]
+      },
+      "expected_primary_findings": [
+        "no_issue_identified_within_scoped_rules",
+        "no_issue_identified_within_scoped_rules"
+      ]
+    },
+    {
+      "scenario": "Other uses context",
+      "request": {
+        "formulation_id": "DEMO-04",
+        "formulation_name": "Other uses limit checks",
+        "product_context": "Other uses",
+        "ingredients": [
+          {
+            "name": "Chlorates of alkali metals",
+            "concentration": { "value": 2, "unit": "percent", "basis": null, "preparation_stage": "finished_product" }
+          },
+          {
+            "name": "Chlorates of alkali metals",
+            "concentration": { "value": 4, "unit": "percent", "basis": null, "preparation_stage": "finished_product" }
+          }
+        ]
+      },
+      "expected_primary_findings": [
+        "restriction_within_limit",
+        "restriction_exceeded"
+      ]
+    }
+  ]
+}

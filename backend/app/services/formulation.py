@@ -14,7 +14,10 @@ from backend.app.models.formulation import (
 )
 from backend.app.models.screening import ConcentrationInput, IngredientInput
 from backend.app.services.compliance import screen_ingredient
+from backend.app.services.ingredient_catalog import IDENTITY_SOURCE_NAME, IngredientCatalog
 from backend.app.services.loader import RegulatoryStore
+from backend.app.models.identity_catalogue import IdentityCatalogueDataset, IdentityLinkageDataset
+from backend.app.services.ingredient_linkage import IngredientLinkageStore
 from backend.app.services.parsing import validate_formulation_request
 
 
@@ -36,11 +39,24 @@ def _runtime_ingredient(ingredient) -> IngredientInput:
 
 
 def screen_formulation(
-    store: RegulatoryStore, request: FormulationRequest
+    store: RegulatoryStore,
+    request: FormulationRequest,
+    ingredient_catalog: IngredientCatalog | None = None,
+    catalogue_error: str | None = None,
+    linkage_store: IngredientLinkageStore | None = None,
+    linkage_error: str | None = None,
 ) -> FormulationScreeningResponse:
     duplicate_groups = validate_formulation_request(request, store)
     results = [
-        screen_ingredient(store, _runtime_ingredient(ingredient), request.product_context)
+        screen_ingredient(
+            store,
+            _runtime_ingredient(ingredient),
+            request.product_context,
+            ingredient_catalog=ingredient_catalog,
+            catalogue_error=catalogue_error,
+            linkage_store=linkage_store,
+            linkage_error=linkage_error,
+        )
         for ingredient in request.ingredients
     ]
     primary_counts = Counter(result.primary_finding for result in results)
@@ -74,6 +90,38 @@ def screen_formulation(
             dataset_version=store.dataset_version,
             accepted_baseline_sha256=store.baseline_manifest_hash,
             sources=[source_snapshot_from_record(record) for record in store.source_snapshots],
+            identity_catalogue=IdentityCatalogueDataset(
+                available=ingredient_catalog is not None,
+                dataset_version=(ingredient_catalog.dataset_version if ingredient_catalog else None),
+                accepted_baseline_sha256=(
+                    ingredient_catalog.baseline_manifest_hash if ingredient_catalog else None
+                ),
+                source_name=(IDENTITY_SOURCE_NAME if ingredient_catalog else None),
+                source_role=(ingredient_catalog.source_document["source_role"] if ingredient_catalog else None),
+                ingredient_count=(ingredient_catalog.ingredient_count if ingredient_catalog else None),
+                error=(catalogue_error if ingredient_catalog is None else None),
+            ),
+            identity_linkage=IdentityLinkageDataset(
+                available=linkage_store is not None,
+                dataset_version=(linkage_store.dataset_version if linkage_store else None),
+                accepted_baseline_sha256=(
+                    linkage_store.baseline_manifest_hash if linkage_store else None
+                ),
+                identity_dataset_version=(
+                    linkage_store.identity_dataset_version if linkage_store else None
+                ),
+                singapore_regulatory_baseline=(
+                    linkage_store.singapore_regulatory_baseline if linkage_store else None
+                ),
+                screened_scope=(list(linkage_store.screened_scope) if linkage_store else []),
+                accepted_records=(linkage_store.counts["accepted_records"] if linkage_store else None),
+                linked=(linkage_store.counts["linked"] if linkage_store else None),
+                verified_not_represented=(
+                    linkage_store.counts["verified_not_represented"] if linkage_store else None
+                ),
+                unresolved=(linkage_store.counts["unresolved"] if linkage_store else None),
+                error=(linkage_error if linkage_store is None else None),
+            ),
         ),
         summary=summary,
         ingredient_results=ingredient_results,

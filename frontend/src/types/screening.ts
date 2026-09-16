@@ -78,7 +78,58 @@ export interface IdentityResolution {
   singapore_candidates: IdentityCandidate[];
   acd_candidates: IdentityCandidate[];
   resolved_singapore_substance_id: string | null;
+  resolved_singapore_substance_ids: string[];
+  identity_source_type: "singapore_regulatory_source" | "acd_regulatory_source" | "ingredient_identity_catalogue" | null;
+  identity_source_name: string | null;
+  singapore_linkage_status: "not_applicable" | "linked" | "verified_not_represented" | "unresolved";
+  catalogue_identity: CatalogueIdentity | null;
+  linkage_evidence: LinkageEvidence | null;
   reasons: string[];
+}
+
+export interface LinkageTarget {
+  raw_record_id: string;
+  rule_id: string;
+  substance_id: string;
+  part: string;
+  reference: string;
+  source_substance_name: string;
+  source_document: string;
+  source_hash: string;
+}
+
+export interface LinkageEvidence {
+  linkage_id: string;
+  accepted_status: "linked" | "verified_not_represented" | "unresolved";
+  applicable_to_active_baseline: boolean;
+  identity_dataset_version: string;
+  identity_dataset_hash: string;
+  singapore_regulatory_baseline: string;
+  singapore_regulatory_baseline_hash: string;
+  screened_scope: string[];
+  singapore_targets: LinkageTarget[];
+  review: {
+    reviewed: boolean;
+    reviewed_at: string;
+    reviewer: string;
+    review_basis: string;
+    notes: string;
+  };
+  inapplicability_reasons: string[];
+}
+
+export interface CatalogueIdentity {
+  ingredient_id: string;
+  canonical_name: string;
+  source_name: string;
+  source_document: string;
+  source_version: string;
+  source_url: string;
+  source_entries: number[];
+  source_pages: number[];
+  raw_record_ids: string[];
+  identity_dataset_version: string;
+  accepted_baseline_sha256: string;
 }
 
 export interface RawFragment {
@@ -195,6 +246,7 @@ export interface IngredientResult {
   primary_finding: Finding;
   confirmed_findings: Finding[];
   review_required: boolean;
+  review_types: Array<"identity_review" | "rule_review">;
   review_reasons: string[];
   rule_evaluations: RuleEvaluation[];
   inactive_evidence: RuleEvidence[];
@@ -227,9 +279,50 @@ export interface ScreeningResponse {
     dataset_version: string;
     accepted_baseline_sha256: string;
     sources: SourceSnapshot[];
+    identity_catalogue: {
+      available: boolean;
+      dataset_version: string | null;
+      accepted_baseline_sha256: string | null;
+      source_name: string | null;
+      source_role: string | null;
+      ingredient_count: number | null;
+      error: string | null;
+    };
+    identity_linkage: {
+      available: boolean;
+      dataset_version: string | null;
+      accepted_baseline_sha256: string | null;
+      identity_dataset_version: string | null;
+      singapore_regulatory_baseline: string | null;
+      screened_scope: string[];
+      accepted_records: number | null;
+      linked: number | null;
+      verified_not_represented: number | null;
+      unresolved: number | null;
+      error: string | null;
+    };
   };
   summary: FormulationSummary;
   ingredient_results: IngredientResult[];
+}
+
+export interface IngredientSearchResult {
+  ingredient_id: string;
+  canonical_name: string;
+  display_name: string;
+  identity_source: string;
+  source_document: string;
+  source_version: string;
+  source_entries: number[];
+  source_pages: number[];
+  raw_record_ids: string[];
+}
+
+export interface IngredientSearchResponse {
+  query: string;
+  dataset_version: string;
+  accepted_baseline_sha256: string;
+  results: IngredientSearchResult[];
 }
 
 export interface EditorIngredient {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from backend.app.models.formulation import (
     ConcentrationBasis,
@@ -11,6 +11,8 @@ from backend.app.models.formulation import (
     ScreeningOptionsResponse,
 )
 from backend.app.services.formulation import screen_formulation
+from backend.app.models.identity_catalogue import IngredientSearchResponse, IngredientSearchResult
+from backend.app.services.ingredient_catalog import IDENTITY_SOURCE_NAME, IngredientCatalog
 from backend.app.services.loader import RegulatoryStore
 from backend.app.services.parsing import UnsupportedProductContextError
 from backend.app.services.source_rendering import (
@@ -54,6 +56,21 @@ def _source_renderer(request: Request) -> SourceEvidenceRenderer:
             detail={"code": "source_evidence_unavailable", "message": "Source evidence renderer is unavailable"},
         )
     return renderer
+
+
+def _accepted_ingredient_catalog(request: Request) -> IngredientCatalog:
+    catalogue = getattr(request.app.state, "ingredient_catalog", None)
+    if catalogue is None:
+        message = getattr(
+            request.app.state,
+            "identity_catalogue_error",
+            "Accepted ingredient identity catalogue is unavailable",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "accepted_identity_baseline_integrity_failure", "message": message},
+        )
+    return catalogue
 
 
 def _image_response(request: Request, rendered: RenderedSourceEvidence) -> Response:
@@ -111,13 +128,48 @@ def screening_options_route(request: Request) -> ScreeningOptionsResponse:
     )
 
 
+@router.get("/ingredients", response_model=IngredientSearchResponse)
+def ingredient_search_route(
+    request: Request,
+    query: str = Query(min_length=2),
+    limit: int = Query(default=20, ge=1, le=20),
+) -> IngredientSearchResponse:
+    catalogue = _accepted_ingredient_catalog(request)
+    return IngredientSearchResponse(
+        query=query,
+        dataset_version=catalogue.dataset_version,
+        accepted_baseline_sha256=catalogue.baseline_manifest_hash,
+        results=[
+            IngredientSearchResult(
+                ingredient_id=item["ingredient_id"],
+                canonical_name=item["canonical_name"],
+                display_name=item["display_name"],
+                identity_source=IDENTITY_SOURCE_NAME,
+                source_document=item["source_document"],
+                source_version=item["source_version"],
+                source_entries=item["source_entries"],
+                source_pages=item["source_pages"],
+                raw_record_ids=item["raw_record_ids"],
+            )
+            for item in catalogue.search(query, limit)
+        ],
+    )
+
+
 @router.post("/screen-formulation", response_model=FormulationScreeningResponse)
 def screen_formulation_route(
     formulation: FormulationRequest,
     request: Request,
 ) -> FormulationScreeningResponse:
     try:
-        return screen_formulation(_accepted_store(request), formulation)
+        return screen_formulation(
+            _accepted_store(request),
+            formulation,
+            ingredient_catalog=getattr(request.app.state, "ingredient_catalog", None),
+            catalogue_error=getattr(request.app.state, "identity_catalogue_error", None),
+            linkage_store=getattr(request.app.state, "ingredient_linkage_store", None),
+            linkage_error=getattr(request.app.state, "identity_linkage_error", None),
+        )
     except UnsupportedProductContextError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

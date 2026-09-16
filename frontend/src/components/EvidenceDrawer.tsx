@@ -11,6 +11,7 @@ import {
   preparationStageLabel,
   readableCode,
   reviewReasonLabel,
+  reviewTypeLabel,
 } from "../lib/presentation";
 import {
   formatConcentration,
@@ -119,6 +120,7 @@ export function EvidenceDrawer({
               <span>Match method</span><strong>{result.identity.match_methods.map(matchMethodLabel).join(", ") || "—"}</strong>
               <span>Confirmed</span><strong>{result.confirmed_findings.map(readableCode).join(", ") || "—"}</strong>
               <span>Review required</span><strong>{result.review_required ? "Yes" : "No"}</strong>
+              {result.review_required && <><span>Review type</span><strong>{result.review_types.map(reviewTypeLabel).join(", ")}</strong></>}
             </div>
             {result.review_required && (
               <div className="review-panel mt-4">
@@ -127,9 +129,65 @@ export function EvidenceDrawer({
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-950">
                   {readableReasons.map((reason) => <li key={reason}>{reason}</li>)}
                 </ul>
+                {result.review_reasons.includes("catalogue_identity_singapore_linkage_unresolved") && (
+                  <p className="mt-3 text-sm text-amber-950">
+                    The ingredient name is recognised in the EU glossary, but this identity has not yet been verified against the Singapore regulatory dataset.
+                  </p>
+                )}
               </div>
             )}
           </section>
+
+          {result.identity.catalogue_identity && (
+            <section>
+              <h3 className="drawer-title">Ingredient identity catalogue</h3>
+              <div className="evidence-card">
+                <div className="metadata-grid">
+                  <span>Recognised name</span><strong>{result.identity.catalogue_identity.canonical_name}</strong>
+                  <span>Identity source</span><strong>{result.identity.catalogue_identity.source_name}</strong>
+                  <span>EU entry</span><strong>{result.identity.catalogue_identity.source_entries.join(", ")}</strong>
+                  <span>Source page</span><strong>{result.identity.catalogue_identity.source_pages.join(", ")}</strong>
+                </div>
+                <p className="mt-4 text-xs leading-5 text-slate-600">
+                  Catalogue recognition confirms the ingredient name only. It does not establish Singapore permission, safety, or regulatory status.
+                </p>
+                <a className="source-link" href={result.identity.catalogue_identity.source_url} target="_blank" rel="noreferrer">
+                  Open identity source <ExternalLink size={14} />
+                </a>
+              </div>
+            </section>
+          )}
+
+          {result.identity.catalogue_identity && (
+            <section>
+              <h3 className="drawer-title">Singapore linkage</h3>
+              <div className="evidence-card">
+                {result.identity.singapore_linkage_status === "linked" && <>
+                  <strong className="text-slate-950">Linked to Singapore regulatory identity</strong>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    This reviewed catalogue identity is linked to the Singapore records shown below. Existing Singapore rule logic remains controlling.
+                  </p>
+                </>}
+                {result.identity.singapore_linkage_status === "verified_not_represented" && <>
+                  <strong className="text-slate-950">Verified for current screening scope</strong>
+                  <div className="metadata-grid mt-3">
+                    <span>Scope checked</span><strong>{result.identity.linkage_evidence?.screened_scope.join(" · ")}</strong>
+                    <span>Singapore baseline</span><strong>{result.identity.linkage_evidence?.singapore_regulatory_baseline}</strong>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-600">{result.scope_note}</p>
+                </>}
+                {result.identity.singapore_linkage_status === "unresolved" && <>
+                  <strong className="text-amber-900">Needs verification</strong>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    The recognised catalogue identity has not been verified against the active Singapore screening scope.
+                  </p>
+                  {result.identity.linkage_evidence?.inapplicability_reasons.map((reason) => (
+                    <p className="mt-2 text-xs text-amber-800" key={reason}>{reason}</p>
+                  ))}
+                </>}
+              </div>
+            </section>
+          )}
 
           <section>
             <h3 className="drawer-title">Regulatory basis</h3>
@@ -217,43 +275,36 @@ export function EvidenceDrawer({
             </details>
           )}
 
-          <details className="technical-details">
-            <summary>Technical provenance</summary>
-            <div className="mt-4 space-y-5 text-xs text-slate-600">
-              <div className="metadata-grid">
-                <span>Dataset</span><strong>{result.dataset_version}</strong>
-                <span>Baseline hash</span><strong className="break-all font-mono">{result.accepted_baseline_sha256}</strong>
-                <span>Submitted name</span><strong className="whitespace-pre-wrap">{result.submitted_ingredient.name}</strong>
+          {result.identity.linkage_evidence && (
+            <details className="acd-details">
+              <summary>Technical provenance</summary>
+              <div className="metadata-grid mt-4">
+                <span>Linkage ID</span><strong>{result.identity.linkage_evidence.linkage_id}</strong>
+                <span>Accepted status</span><strong>{readableCode(result.identity.linkage_evidence.accepted_status)}</strong>
+                <span>Applicable now</span><strong>{result.identity.linkage_evidence.applicable_to_active_baseline ? "Yes" : "No"}</strong>
+                <span>Identity dataset</span><strong>{result.identity.linkage_evidence.identity_dataset_version}</strong>
+                <span>Identity hash</span><strong className="break-all">{result.identity.linkage_evidence.identity_dataset_hash}</strong>
+                <span>Singapore baseline</span><strong>{result.identity.linkage_evidence.singapore_regulatory_baseline}</strong>
+                <span>Regulatory hash</span><strong className="break-all">{result.identity.linkage_evidence.singapore_regulatory_baseline_hash}</strong>
+                <span>Reviewer</span><strong>{result.identity.linkage_evidence.review.reviewer}</strong>
+                <span>Reviewed at</span><strong>{result.identity.linkage_evidence.review.reviewed_at}</strong>
+                <span>Review basis</span><strong>{result.identity.linkage_evidence.review.review_basis}</strong>
+                <span>Notes</span><strong>{result.identity.linkage_evidence.review.notes || "—"}</strong>
               </div>
-              {singapore.map((evaluation) => (
-                <div className="border-t border-slate-200 pt-4" key={evaluation.rule_id}>
-                  <div className="metadata-grid">
-                    <span>Rule ID</span><strong className="break-all font-mono">{evaluation.rule_id}</strong>
-                    <span>Raw record ID</span><strong className="break-all font-mono">{evaluation.evidence.raw_record_id}</strong>
-                    <span>Normalization</span><strong>{evaluation.evidence.normalization_status}</strong>
-                    <span>Exact substance</span><strong className="whitespace-pre-wrap">{evaluation.evidence.substance_name}</strong>
-                  </div>
-                  {evaluation.evidence.raw_fragments.map((fragment, index) => (
-                    <p className="mt-2 break-all font-mono" key={`${fragment.raw_record_id}-${index}`}>
-                      Page {fragment.source_page} · bbox {fragment.row_bbox?.join(", ") ?? "unavailable"}
-                    </p>
+              {result.identity.linkage_evidence.singapore_targets.length > 0 && (
+                <div className="mt-4 space-y-2 text-xs text-slate-600">
+                  {result.identity.linkage_evidence.singapore_targets.map((target) => (
+                    <div className="rounded border border-slate-200 p-3" key={target.rule_id}>
+                      <strong className="text-slate-800">{target.part} · Ref {target.reference}</strong>
+                      <div className="mt-1 whitespace-pre-wrap">{target.source_substance_name}</div>
+                      <div className="mt-1 break-all">{target.raw_record_id} · {target.rule_id}</div>
+                    </div>
                   ))}
                 </div>
-              ))}
-              {result.review_reasons.length > 0 && (
-                <div className="border-t border-slate-200 pt-4">
-                  <strong className="text-slate-800">Original review codes/reasons</strong>
-                  {result.review_reasons.map((reason) => <p className="mt-1 break-all font-mono" key={reason}>{reason}</p>)}
-                </div>
               )}
-              {crossReferences.map((reference) => (
-                <div className="border-t border-slate-200 pt-4" key={reference.cross_reference_id}>
-                  <strong className="break-all font-mono text-slate-800">{reference.cross_reference_id}</strong>
-                  <pre className="mt-2 overflow-auto whitespace-pre-wrap bg-slate-50 p-3 text-[11px]">{JSON.stringify(reference.field_differences, null, 2)}</pre>
-                </div>
-              ))}
-            </div>
-          </details>
+            </details>
+          )}
+
         </div>
       </aside>
     </>

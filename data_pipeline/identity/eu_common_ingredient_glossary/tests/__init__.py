@@ -1,0 +1,1 @@
+"""EU identity catalogue tests."""

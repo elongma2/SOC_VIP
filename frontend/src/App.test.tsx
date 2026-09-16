@@ -27,19 +27,18 @@ describe("formula screening vertical slice", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Run screen" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Run screen" }));
 
-    expect(await screen.findByText("3 ingredients require attention")).toBeInTheDocument();
+    expect(await screen.findByText("3 of 3 ingredients require attention")).toBeInTheDocument();
+    expect(screen.getByText("2 deterministic regulatory findings · 1 unresolved identity")).toBeInTheDocument();
     expect(screen.getAllByText("Prohibited-list substance identified").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/A1136/).length).toBeGreaterThan(0);
     const aminoRow = screen.getAllByText("Aminophylline").find((element) => element.closest("tr"))!.closest("tr")!;
     expect(within(aminoRow).getByText("—")).toBeInTheDocument();
     expect(within(aminoRow).getByText(/Regulation 6\(1\)/)).toBeInTheDocument();
 
-    const reviewCard = screen.getAllByText("Review required")
-      .find((element) => element.closest(".summary-card"))!.closest("div")!;
-    expect(within(reviewCard).getByText("1")).toBeInTheDocument();
-    expect(screen.getByText((_, element) =>
-      element?.tagName === "SPAN" && element.textContent === "0 professional review finding",
-    )).toBeInTheDocument();
+    const reviewCard = screen.getByText("Professional review finding").closest<HTMLElement>(".summary-card")!;
+    expect(within(reviewCard).getByText("0")).toBeInTheDocument();
+    expect(screen.getByText("1 ingredient requires human review")).toBeInTheDocument();
+    expect(screen.getByText(/Screening scope: Singapore ingredient rules covered by the current MVP/)).toBeInTheDocument();
   });
 
   it("labels an ACD counterpart CAS separately from the submitted CAS", async () => {
@@ -48,7 +47,9 @@ describe("formula screening vertical slice", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Run screen" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Run screen" }));
-    await user.click(await screen.findByText("Tosylchloramide sodium"));
+    const tosylRow = (await screen.findAllByText("Tosylchloramide sodium"))
+      .find((element) => element.closest("tr"))!;
+    await user.click(tosylRow);
 
     const drawer = screen.getByLabelText("Regulatory evidence");
     expect(within(drawer).getByText("Submitted CAS")).toBeInTheDocument();
@@ -63,13 +64,15 @@ describe("formula screening vertical slice", () => {
     );
   });
 
-  it("renders readable ACD comparisons and keeps raw differences in collapsed provenance", async () => {
+  it("renders readable ACD comparisons without exposing technical provenance", async () => {
     mockSuccessfulApi();
     const user = userEvent.setup();
     render(<App />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Run screen" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Run screen" }));
-    await user.click(await screen.findByText("Tosylchloramide sodium"));
+    const tosylRow = (await screen.findAllByText("Tosylchloramide sodium"))
+      .find((element) => element.closest("tr"))!;
+    await user.click(tosylRow);
     const drawer = screen.getByLabelText("Regulatory evidence");
     const acdDetails = within(drawer).getByText("ACD comparison").closest("details")!;
     await user.click(within(acdDetails).getByText("ACD comparison"));
@@ -77,9 +80,8 @@ describe("formula screening vertical slice", () => {
     expect(within(acdDetails).getByText("Ready for use")).toBeInTheDocument();
     expect(within(acdDetails).getByText("Finished product")).toBeInTheDocument();
     expect(within(acdDetails).getByText("ACD and Singapore source wording or regulatory fields differ")).toBeInTheDocument();
-    const technical = within(drawer).getByText("Technical provenance").closest("details")!;
-    expect(technical).not.toHaveAttribute("open");
-    expect(within(technical).getByText(/\[parent\]/)).not.toBeVisible();
+    expect(within(drawer).queryByText("Technical provenance")).not.toBeInTheDocument();
+    expect(within(drawer).queryByText(/\[parent\]/)).not.toBeInTheDocument();
   });
 
   it("shows plain-language field help and readable enum labels", async () => {
@@ -103,7 +105,9 @@ describe("formula screening vertical slice", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Run screen" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Run screen" }));
-    await user.click(await screen.findByText("Tosylchloramide sodium"));
+    const tosylRow = (await screen.findAllByText("Tosylchloramide sodium"))
+      .find((element) => element.closest("tr"))!;
+    await user.click(tosylRow);
     await user.click(screen.getByRole("button", { name: "View full accepted page" }));
     const modal = screen.getByRole("dialog", { name: "Accepted source page" });
     expect(within(modal).getByRole("img")).toHaveAttribute("src", "/api/source-evidence/raw-sg-5/page");
@@ -117,7 +121,9 @@ describe("formula screening vertical slice", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByRole("button", { name: "Run screen" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Run screen" }));
-    await user.click(await screen.findByText("Tosylchloramide sodium"));
+    const tosylRow = (await screen.findAllByText("Tosylchloramide sodium"))
+      .find((element) => element.closest("tr"))!;
+    await user.click(tosylRow);
     fireEvent.error(screen.getByRole("img", { name: /Accepted PDF row.*reference 5/ }));
     expect(screen.getByText(/accepted source row could not be rendered/i)).toBeInTheDocument();
     expect(screen.getByText("5 | Tosylchloramide sodium | All products | 0.2% | |")).toBeInTheDocument();
@@ -146,7 +152,7 @@ describe("formula screening vertical slice", () => {
     expect(screen.getByLabelText("Ingredient 1 preparation stage")).toHaveValue("finished_product");
     await user.click(toggle);
     await user.click(screen.getByRole("button", { name: "Run screen" }));
-    await screen.findByText("3 ingredients require attention");
+    await screen.findByText("3 of 3 ingredients require attention");
     const post = fetchMock.mock.calls.find(([input]) => String(input).endsWith("/screen-formulation"))!;
     const sent = JSON.parse(String((post[1] as RequestInit).body));
     expect(sent.ingredients[0].concentration).toBeNull();
@@ -167,7 +173,7 @@ describe("formula screening vertical slice", () => {
     await user.click(screen.getByRole("button", { name: "Screening…" }));
     expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/screen-formulation"))).toHaveLength(1);
     resolvePost({ ok: true, status: 200, json: async () => testResponse } as Response);
-    await screen.findByText("3 ingredients require attention");
+    await screen.findByText("3 of 3 ingredients require attention");
   });
 
   it("shows FastAPI validation errors without treating them as findings", async () => {

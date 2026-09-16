@@ -11,6 +11,16 @@ from fastapi.responses import JSONResponse
 
 from backend.app.routes import screening_router
 from backend.app.services.loader import AcceptedBaselineError, RegulatoryStore, load_accepted_store
+from backend.app.services.ingredient_catalog import (
+    AcceptedIdentityCatalogueError,
+    IngredientCatalog,
+    load_accepted_ingredient_catalog,
+)
+from backend.app.services.ingredient_linkage import (
+    AcceptedIngredientLinkageError,
+    IngredientLinkageStore,
+    load_accepted_ingredient_linkages,
+)
 from backend.app.services.source_rendering import SourceEvidenceRenderer
 
 
@@ -30,12 +40,20 @@ def _json_safe(value: Any) -> Any:
 
 def create_app(
     store_loader: Callable[[], RegulatoryStore] = load_accepted_store,
+    ingredient_catalog_loader: Callable[[], IngredientCatalog] = load_accepted_ingredient_catalog,
+    ingredient_linkage_loader: Callable[
+        [], IngredientLinkageStore
+    ] = load_accepted_ingredient_linkages,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         application.state.regulatory_store = None
         application.state.source_evidence_renderer = None
         application.state.baseline_error = None
+        application.state.ingredient_catalog = None
+        application.state.identity_catalogue_error = None
+        application.state.ingredient_linkage_store = None
+        application.state.identity_linkage_error = None
         try:
             application.state.regulatory_store = store_loader()
             application.state.source_evidence_renderer = SourceEvidenceRenderer(
@@ -43,6 +61,14 @@ def create_app(
             )
         except AcceptedBaselineError as error:
             application.state.baseline_error = str(error)
+        try:
+            application.state.ingredient_catalog = ingredient_catalog_loader()
+        except AcceptedIdentityCatalogueError as error:
+            application.state.identity_catalogue_error = str(error)
+        try:
+            application.state.ingredient_linkage_store = ingredient_linkage_loader()
+        except AcceptedIngredientLinkageError as error:
+            application.state.identity_linkage_error = str(error)
         yield
 
     application = FastAPI(

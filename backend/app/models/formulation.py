@@ -8,6 +8,7 @@ from pydantic import Field, field_validator, model_validator
 from data_pipeline.scripts.normalize import CAS_STRUCTURE_RE, cas_is_valid
 
 from .screening import Finding, ScreeningResult, StrictModel
+from .identity_catalogue import IdentityCatalogueDataset, IdentityLinkageDataset
 
 
 class ConcentrationUnit(StrEnum):
@@ -107,6 +108,8 @@ class DatasetIdentity(StrictModel):
     dataset_version: str
     accepted_baseline_sha256: str
     sources: list[SourceSnapshot]
+    identity_catalogue: IdentityCatalogueDataset
+    identity_linkage: IdentityLinkageDataset
 
 
 class FormulationSummary(StrictModel):

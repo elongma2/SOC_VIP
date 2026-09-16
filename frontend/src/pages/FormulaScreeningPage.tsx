@@ -116,10 +116,6 @@ export function FormulaScreeningPage() {
   }, []);
 
   const selectedResult = response?.ingredient_results.find((item) => item.submitted_row_number === selectedRow) ?? null;
-  const attentionCount = response?.ingredient_results.filter(
-    (result) => adversePrimaryFindings.has(result.primary_finding) || result.review_required,
-  ).length ?? 0;
-
   const submit = async () => {
     if (loading || integrityFailure) return;
     const built = buildRequest(formulationId, formulationName, productContext, ingredients);
@@ -195,8 +191,16 @@ export function FormulaScreeningPage() {
 
         {response && (
           <div className="mt-9 space-y-5">
-            <ScreeningSummary summary={response.summary} attentionCount={attentionCount} />
+            <ScreeningSummary
+              summary={response.summary}
+              results={response.ingredient_results}
+              selectedRow={selectedRow}
+              onSelect={setSelectedRow}
+            />
             <ResultsTable results={response.ingredient_results} selectedRow={selectedRow} onSelect={setSelectedRow} />
+            <p className="border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500">
+              Screening scope: Singapore ingredient rules covered by the current MVP. Findings are ingredient-level screening results and are not a formulation-level compliance conclusion.
+            </p>
             <p className="text-xs leading-5 text-slate-500">
               Dataset {response.dataset.dataset_version} · Accepted baseline {response.dataset.accepted_baseline_sha256.slice(0, 12)}…
             </p>

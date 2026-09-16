@@ -31,6 +31,11 @@ const reviewReasonLabels: Record<string, string> = {
   jurisdiction_specific_source_wording: "The sources contain jurisdiction-specific wording",
   malformed_cas_identifier_preserved: "A malformed source CAS identifier was preserved for review",
   blank_deleted_or_ranged_source_entry: "The source contains a blank, deleted, or ranged entry",
+  catalogue_identity_singapore_linkage_unresolved: "Singapore identity linkage needs verification",
+  ingredient_catalogue_unavailable_identity_verification_withheld: "The ingredient catalogue is unavailable, so identity verification was withheld",
+  ingredient_linkage_baseline_unavailable: "The accepted Singapore identity-linkage baseline is unavailable",
+  linkage_not_valid_for_active_baseline: "The accepted identity linkage is not valid for the active source baseline or screening scope",
+  supplied_cas_cannot_be_corroborated_by_catalogue_source: "The submitted CAS cannot be corroborated by the name-only ingredient catalogue",
 };
 
 const statusLabels: Record<string, string> = {
@@ -46,6 +51,9 @@ const statusLabels: Record<string, string> = {
   resolved: "Resolved",
   unresolved: "Unresolved",
   review_required: "Review required",
+  not_applicable: "Not applicable",
+  linked: "Linked",
+  verified_not_represented: "Verified not represented in scoped lists",
 };
 
 const matchMethodLabels: Record<string, string> = {
@@ -53,6 +61,9 @@ const matchMethodLabels: Record<string, string> = {
   exact_cas: "Exact source-backed CAS",
   exact_name_via_acd: "Exact name via ACD cross-reference",
   exact_cas_via_acd: "Exact CAS via ACD cross-reference",
+  exact_catalogue_name: "Exact EU catalogue name",
+  accepted_catalogue_linkage: "Accepted EU-to-Singapore identity linkage",
+  accepted_verified_not_represented: "Accepted scoped absence review",
 };
 
 const fieldLabels: Record<string, string> = {
@@ -68,10 +79,17 @@ export function displayIngredientName(result: IngredientResult): string {
   const resolvedName = result.identity.singapore_candidates.find(
     (candidate) => candidate.substance_id === result.identity.resolved_singapore_substance_id,
   )?.original_substance_name;
-  const sourceBackedName = supportingName ?? resolvedName;
+  const sourceBackedName = supportingName ?? resolvedName ?? result.identity.catalogue_identity?.canonical_name;
   if (!sourceBackedName) return result.submitted_ingredient.name;
   const delimiterIndex = sourceBackedName.toLowerCase().indexOf(" (except ");
   return delimiterIndex < 0 ? sourceBackedName : sourceBackedName.slice(0, delimiterIndex);
+}
+
+export function reviewTypeLabel(value: string): string {
+  return {
+    identity_review: "Identity review",
+    rule_review: "Rule review",
+  }[value] ?? readableCode(value);
 }
 
 export function readableCode(value: string): string {

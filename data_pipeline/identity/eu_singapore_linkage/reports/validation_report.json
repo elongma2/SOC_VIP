@@ -1,0 +1,12 @@
+{
+  "dataset_version": "eu-sg-linkage__eu-glossary-2025-1175__sg-2025-12-01",
+  "status": "PASS",
+  "errors": [],
+  "counts": {
+    "accepted_records": 0,
+    "linked": 0,
+    "verified_not_represented": 0,
+    "unresolved": 0
+  },
+  "review_input_sha256": "e31aa7a26b3a4fbfb7965d027bde92dfd545ff6e42bab062109d3e4c033edc06"
+}

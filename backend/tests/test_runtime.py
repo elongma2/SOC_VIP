@@ -10,10 +10,15 @@ import pytest
 from pydantic import ValidationError
 
 from backend.app.models.screening import ConcentrationInput, Finding, IdentityStatus, IngredientInput
+from backend.app.models.identity_catalogue import SingaporeIdentityLinkageRecord
+from backend.app.models.screening import SingaporeLinkageStatus
 from backend.app.services.compliance import screen_ingredient
+from backend.app.services.ingredient_catalog import load_accepted_ingredient_catalog
+from backend.app.services.ingredient_linkage import load_accepted_ingredient_linkages
 from backend.app.services.loader import AcceptedBaselineError, load_accepted_store
 from backend.app.services.resolver import resolve_ingredient
 from backend.app.services.review_pack import build_review_pack
+from data_pipeline.identity.eu_singapore_linkage.scripts.pipeline import validate_review_input
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +27,218 @@ ROOT = Path(__file__).resolve().parents[2]
 @pytest.fixture(scope="session")
 def store():
     return load_accepted_store(ROOT)
+
+
+@pytest.fixture(scope="session")
+def ingredient_catalog():
+    return load_accepted_ingredient_catalog(ROOT)
+
+
+def test_catalogue_exact_search_is_case_insensitive_and_not_fuzzy(ingredient_catalog):
+    assert ingredient_catalog.find_exact_name(" niacinamide ")["canonical_name"] == "NIACINAMIDE"
+    assert ingredient_catalog.find_exact_name("niacinamid") is None
+    assert ingredient_catalog.search("nia", limit=2)[0]["canonical_name"].startswith("NIA")
+    assert len(ingredient_catalog.search("a", limit=20)) == 20
+
+
+def test_catalogue_identity_requires_version_bound_linkage_review(store, ingredient_catalog):
+    result = screen_ingredient(store, IngredientInput(name="Niacinamide"), ingredient_catalog=ingredient_catalog)
+    assert result.primary_finding == Finding.PROFESSIONAL_REVIEW
+    assert result.identity.catalogue_identity.canonical_name == "NIACINAMIDE"
+    assert result.identity.singapore_linkage_status == SingaporeLinkageStatus.UNRESOLVED
+    assert [item.value for item in result.review_types] == ["identity_review"]
+
+
+def test_verified_not_represented_contract_requires_full_scope() -> None:
+    with pytest.raises(ValidationError):
+        SingaporeIdentityLinkageRecord(
+            catalogue_ingredient_id="eu-2025-1175-entry-17380",
+            catalogue_canonical_name="NIACINAMIDE",
+            identity_dataset_version="eu-glossary-2025-1175",
+            singapore_regulatory_baseline="sg-2025-12-01",
+            screened_scope=["Third Schedule Part I"],
+            status="verified_not_represented",
+        )
+    accepted = SingaporeIdentityLinkageRecord(
+        catalogue_ingredient_id="eu-2025-1175-entry-17380",
+        catalogue_canonical_name="NIACINAMIDE",
+        identity_dataset_version="eu-glossary-2025-1175",
+        singapore_regulatory_baseline="sg-2025-12-01",
+        screened_scope=["Third Schedule Part I", "Third Schedule Part II"],
+        status="verified_not_represented",
+    )
+    assert accepted.status == SingaporeLinkageStatus.VERIFIED_NOT_REPRESENTED
+
+
+def _review_input(*decisions):
+    return {
+        "identity_dataset_version": "eu-glossary-2025-1175",
+        "identity_dataset_hash": "e146c81b5978c373ac1f20c677ba20c5221e02b7f128b4b095ff711075331094",
+        "singapore_regulatory_baseline": "sg-2025-12-01",
+        "singapore_regulatory_baseline_hash": "8dc52418c1360074a52221966cd3e74e1dcd108233d8ad8045797a6c34e25017",
+        "screened_scope": ["Third Schedule Part I", "Third Schedule Part II"],
+        "decisions": list(decisions),
+    }
+
+
+def _decision(ingredient_id, name, status, raw_ids=()):
+    return {
+        "catalogue_ingredient_id": ingredient_id,
+        "catalogue_canonical_name": name,
+        "status": status,
+        "singapore_raw_record_ids": list(raw_ids),
+        "review": {
+            "reviewed": True,
+            "reviewed_at": "2026-09-16",
+            "reviewer": "Test reviewer",
+            "review_basis": "Compared with accepted Third Schedule Parts I and II.",
+            "notes": "Synthetic test decision.",
+        },
+    }
+
+
+def _linkage_store(*decisions):
+    accepted = validate_review_input(_review_input(*decisions), ROOT)
+    current = load_accepted_ingredient_linkages(ROOT)
+    return replace(
+        current,
+        counts=accepted["counts"],
+        records_by_catalogue_id={
+            item["catalogue_ingredient_id"]: item for item in accepted["records"]
+        },
+    )
+
+
+def test_verified_not_represented_produces_bounded_scoped_no_issue(store, ingredient_catalog):
+    linkage = _linkage_store(
+        _decision(
+            "eu-2025-1175-entry-17380",
+            "NIACINAMIDE",
+            "verified_not_represented",
+        )
+    )
+    result = screen_ingredient(
+        store,
+        IngredientInput(name="Niacinamide"),
+        ingredient_catalog=ingredient_catalog,
+        linkage_store=linkage,
+    )
+    assert result.primary_finding == Finding.NO_ISSUE
+    assert result.identity.status == IdentityStatus.RESOLVED
+    assert result.identity.singapore_linkage_status == SingaporeLinkageStatus.VERIFIED_NOT_REPRESENTED
+    assert result.searched_singapore_parts == ["Third Schedule Part I", "Third Schedule Part II"]
+    assert result.review_required is False
+    assert "does not establish general Singapore permission" in result.scope_note
+
+
+def test_multitarget_link_runs_every_existing_singapore_rule(store, ingredient_catalog):
+    linkage = _linkage_store(
+        _decision(
+            "eu-2025-1175-entry-08587",
+            "DIETHYLENE GLYCOL",
+            "linked",
+            (
+                "raw-singapore_regulations_2025_12_01-third-schedule-part-i-a1140",
+                "raw-singapore_regulations_2025_12_01-third-schedule-part-ii-186",
+            ),
+        )
+    )
+    result = screen_ingredient(
+        store,
+        IngredientInput(name="Diethylene glycol"),
+        ingredient_catalog=ingredient_catalog,
+        linkage_store=linkage,
+    )
+    assert result.identity.singapore_linkage_status == SingaporeLinkageStatus.LINKED
+    assert result.identity.resolved_singapore_substance_id is None
+    assert len(result.identity.resolved_singapore_substance_ids) == 2
+    assert {item.rule_id for item in result.rule_evaluations} == {
+        "sg-third-schedule-i-a1140",
+        "sg-third-schedule-ii-186",
+    }
+    assert result.primary_finding == Finding.PROFESSIONAL_REVIEW
+    assert [item.value for item in result.review_types] == ["rule_review"]
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("identity_dataset_hash", "0" * 64),
+        ("singapore_regulatory_baseline_hash", "1" * 64),
+        ("screened_scope", ["Third Schedule Part I"]),
+    ],
+)
+def test_stale_linkage_becomes_identity_review(store, ingredient_catalog, field, value):
+    linkage = _linkage_store(
+        _decision(
+            "eu-2025-1175-entry-17380",
+            "NIACINAMIDE",
+            "verified_not_represented",
+        )
+    )
+    record = dict(linkage.records_by_catalogue_id["eu-2025-1175-entry-17380"])
+    record[field] = value
+    stale = replace(linkage, records_by_catalogue_id={record["catalogue_ingredient_id"]: record})
+    result = screen_ingredient(
+        store,
+        IngredientInput(name="Niacinamide"),
+        ingredient_catalog=ingredient_catalog,
+        linkage_store=stale,
+    )
+    assert result.primary_finding == Finding.PROFESSIONAL_REVIEW
+    assert result.identity.singapore_linkage_status == SingaporeLinkageStatus.UNRESOLVED
+    assert result.review_reasons == ["linkage_not_valid_for_active_baseline"]
+    assert [item.value for item in result.review_types] == ["identity_review"]
+
+
+def test_changed_singapore_target_source_hash_invalidates_linkage(store, ingredient_catalog):
+    linkage = _linkage_store(
+        _decision(
+            "eu-2025-1175-entry-08587",
+            "DIETHYLENE GLYCOL",
+            "linked",
+            ("raw-singapore_regulations_2025_12_01-third-schedule-part-i-a1140",),
+        )
+    )
+    record = dict(linkage.records_by_catalogue_id["eu-2025-1175-entry-08587"])
+    target = dict(record["singapore_targets"][0])
+    target["source_hash"] = "f" * 64
+    record["singapore_targets"] = [target]
+    stale = replace(linkage, records_by_catalogue_id={record["catalogue_ingredient_id"]: record})
+    result = screen_ingredient(
+        store,
+        IngredientInput(name="Diethylene glycol"),
+        ingredient_catalog=ingredient_catalog,
+        linkage_store=stale,
+    )
+    assert result.primary_finding == Finding.PROFESSIONAL_REVIEW
+    assert result.review_reasons == ["linkage_not_valid_for_active_baseline"]
+    assert result.identity.linkage_evidence.inapplicability_reasons
+
+
+def test_linkage_unavailable_affects_catalogue_fallback_only(store, ingredient_catalog):
+    catalogue_result = screen_ingredient(
+        store,
+        IngredientInput(name="Niacinamide"),
+        ingredient_catalog=ingredient_catalog,
+        linkage_error="linkage hash mismatch",
+    )
+    regulatory_result = screen_ingredient(
+        store,
+        IngredientInput(name="Aminophylline"),
+        ingredient_catalog=ingredient_catalog,
+        linkage_error="linkage hash mismatch",
+    )
+    unknown_result = screen_ingredient(
+        store,
+        IngredientInput(name="Mystery Extract"),
+        ingredient_catalog=ingredient_catalog,
+        linkage_error="linkage hash mismatch",
+    )
+    assert catalogue_result.review_reasons == ["ingredient_linkage_baseline_unavailable"]
+    assert regulatory_result.primary_finding == Finding.PROHIBITED
+    assert regulatory_result.identity.singapore_linkage_status == SingaporeLinkageStatus.NOT_APPLICABLE
+    assert unknown_result.primary_finding == Finding.IDENTITY_UNRESOLVED
 
 
 def concentration(value: float, *, unit: str = "percent", basis=None, stage="finished_product"):

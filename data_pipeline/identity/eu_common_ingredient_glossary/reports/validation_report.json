@@ -1,0 +1,97 @@
+{
+  "dataset_version": "eu-glossary-2025-1175",
+  "validation_status": "passed",
+  "source_sha256": "03f8a31f86326b6ab6c659685e6442bb63295860b2aaded00c3b12858f4d952a",
+  "counts": {
+    "pdf_pages": 862,
+    "raw_rows": 30418,
+    "searchable_identities": 30416,
+    "duplicate_search_key_groups": 2
+  },
+  "errors": [],
+  "warnings": [],
+  "duplicate_groups": [
+    {
+      "canonical_name": "LACTOBACILLUS/PANAX GINSENG ROOT FERMENT FILTRATE",
+      "source_entries": [
+        14588,
+        14589
+      ],
+      "source_pages": [
+        440
+      ]
+    },
+    {
+      "canonical_name": "SYZYGIUM LUEHMANNII FRUIT POWDER",
+      "source_entries": [
+        28194,
+        28195
+      ],
+      "source_pages": [
+        803
+      ]
+    }
+  ],
+  "qa_results": [
+    {
+      "canonical_name": "NIACINAMIDE",
+      "present": true,
+      "source_entries": [
+        17380
+      ],
+      "source_pages": [
+        516
+      ]
+    },
+    {
+      "canonical_name": "GLYCERIN",
+      "present": true,
+      "source_entries": [
+        11096
+      ],
+      "source_pages": [
+        343
+      ]
+    },
+    {
+      "canonical_name": "PANTHENOL",
+      "present": true,
+      "source_entries": [
+        19012
+      ],
+      "source_pages": [
+        559
+      ]
+    },
+    {
+      "canonical_name": "TOCOPHEROL",
+      "present": true,
+      "source_entries": [
+        28929
+      ],
+      "source_pages": [
+        822
+      ]
+    },
+    {
+      "canonical_name": "AMINOPHYLLINE",
+      "present": true,
+      "source_entries": [
+        1712
+      ],
+      "source_pages": [
+        61
+      ]
+    },
+    {
+      "canonical_name": "DIETHYLENE GLYCOL",
+      "present": true,
+      "source_entries": [
+        8587
+      ],
+      "source_pages": [
+        273
+      ]
+    }
+  ]
+}

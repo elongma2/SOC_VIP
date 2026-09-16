@@ -1,0 +1,65 @@
+{
+  "dataset_version": "eu-sg-linkage__eu-glossary-2025-1175__sg-2025-12-01",
+  "identity_dataset_version": "eu-glossary-2025-1175",
+  "identity_dataset_hash": "e146c81b5978c373ac1f20c677ba20c5221e02b7f128b4b095ff711075331094",
+  "singapore_regulatory_baseline": "sg-2025-12-01",
+  "singapore_regulatory_baseline_hash": "8dc52418c1360074a52221966cd3e74e1dcd108233d8ad8045797a6c34e25017",
+  "screened_scope": [
+    "Third Schedule Part I",
+    "Third Schedule Part II"
+  ],
+  "candidate_count": 3,
+  "records": [
+    {
+      "catalogue_ingredient_id": "eu-2025-1175-entry-02112",
+      "catalogue_canonical_name": "AQUA",
+      "eu_source_entries": [
+        2112
+      ],
+      "eu_source_pages": [
+        74
+      ],
+      "eu_raw_record_ids": [
+        "raw-eu-2025-1175-entry-02112"
+      ],
+      "candidate_generation_method": "exact_normalized_name_equality",
+      "singapore_candidates": [],
+      "reason_for_review": "No deterministic Singapore candidate identified.",
+      "current_status": "unresolved"
+    },
+    {
+      "catalogue_ingredient_id": "eu-2025-1175-entry-08587",
+      "catalogue_canonical_name": "DIETHYLENE GLYCOL",
+      "eu_source_entries": [
+        8587
+      ],
+      "eu_source_pages": [
+        273
+      ],
+      "eu_raw_record_ids": [
+        "raw-eu-2025-1175-entry-08587"
+      ],
+      "candidate_generation_method": "exact_normalized_name_equality",
+      "singapore_candidates": [],
+      "reason_for_review": "No deterministic Singapore candidate identified.",
+      "current_status": "unresolved"
+    },
+    {
+      "catalogue_ingredient_id": "eu-2025-1175-entry-17380",
+      "catalogue_canonical_name": "NIACINAMIDE",
+      "eu_source_entries": [
+        17380
+      ],
+      "eu_source_pages": [
+        516
+      ],
+      "eu_raw_record_ids": [
+        "raw-eu-2025-1175-entry-17380"
+      ],
+      "candidate_generation_method": "exact_normalized_name_equality",
+      "singapore_candidates": [],
+      "reason_for_review": "No deterministic Singapore candidate identified.",
+      "current_status": "unresolved"
+    }
+  ]
+}

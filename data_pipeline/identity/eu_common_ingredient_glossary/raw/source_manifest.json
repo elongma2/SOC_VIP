@@ -1,0 +1,30 @@
+{
+  "dataset_version": "eu-glossary-2025-1175",
+  "documents": [
+    {
+      "source_document": "eu_common_ingredient_glossary_2025_1175",
+      "source_role": "ingredient_identity_reference",
+      "title": "Commission Implementing Decision (EU) 2025/1175 — Glossary of common ingredient names for use in the labelling of cosmetic products",
+      "authority": "European Commission",
+      "official_identifier": "Commission Implementing Decision (EU) 2025/1175",
+      "eli": "http://data.europa.eu/eli/dec_impl/2025/1175/oj",
+      "source_url": "http://data.europa.eu/eli/dec_impl/2025/1175/oj",
+      "publication_date": "2025-07-10",
+      "application_date": "2026-07-30",
+      "retrieval_date": "2026-09-16",
+      "filename": "OJ_L_202501175_EN_TXT.pdf",
+      "sha256": "03f8a31f86326b6ab6c659685e6442bb63295860b2aaded00c3b12858f4d952a",
+      "page_count": 862,
+      "source_pages": {
+        "decision": [
+          1,
+          2
+        ],
+        "glossary": [
+          3,
+          862
+        ]
+      }
+    }
+  ]
+}

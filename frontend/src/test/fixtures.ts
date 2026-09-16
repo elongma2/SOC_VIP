@@ -35,11 +35,18 @@ const baseResult = (row: number, name: string): IngredientResult => ({
     singapore_candidates: [],
     acd_candidates: [],
     resolved_singapore_substance_id: `sg-${row}`,
+    resolved_singapore_substance_ids: [`sg-${row}`],
+    identity_source_type: "singapore_regulatory_source",
+    identity_source_name: "Singapore Third Schedule",
+    singapore_linkage_status: "not_applicable",
+    catalogue_identity: null,
+    linkage_evidence: null,
     reasons: [],
   },
   primary_finding: "no_issue_identified_within_scoped_rules",
   confirmed_findings: [],
   review_required: false,
+  review_types: [],
   review_reasons: [],
   rule_evaluations: [],
   inactive_evidence: [],
@@ -152,10 +159,17 @@ mystery.identity = {
   singapore_candidates: [],
   acd_candidates: [],
   resolved_singapore_substance_id: null,
+  resolved_singapore_substance_ids: [],
+  identity_source_type: null,
+  identity_source_name: null,
+  singapore_linkage_status: "not_applicable",
+  catalogue_identity: null,
+  linkage_evidence: null,
   reasons: ["no_source_backed_identity_match"],
 };
 mystery.primary_finding = "identity_unresolved";
 mystery.review_required = true;
+mystery.review_types = ["identity_review"];
 mystery.review_reasons = ["no_source_backed_identity_match"];
 mystery.searched_singapore_parts = [];
 
@@ -176,6 +190,28 @@ export const testResponse: ScreeningResponse = {
       retrieval_date: "2026-09-15",
       snapshot_generated_at: "2025-12-01T17:34:45+08:00",
     }],
+    identity_catalogue: {
+      available: true,
+      dataset_version: "eu-glossary-2025-1175",
+      accepted_baseline_sha256: "identityhash",
+      source_name: "EU Glossary of Common Ingredient Names",
+      source_role: "ingredient_identity_reference",
+      ingredient_count: 30416,
+      error: null,
+    },
+    identity_linkage: {
+      available: true,
+      dataset_version: "eu-sg-linkage__eu-glossary-2025-1175__sg-2025-12-01",
+      accepted_baseline_sha256: "linkagehash",
+      identity_dataset_version: "eu-glossary-2025-1175",
+      singapore_regulatory_baseline: "sg-2025-12-01",
+      screened_scope: ["Third Schedule Part I", "Third Schedule Part II"],
+      accepted_records: 0,
+      linked: 0,
+      verified_not_represented: 0,
+      unresolved: 0,
+      error: null,
+    },
   },
   summary: {
     ingredients_submitted: 3,

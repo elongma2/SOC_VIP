@@ -1,0 +1,20 @@
+{
+  "dataset_version": "eu-glossary-2025-1175",
+  "accepted_on": "2026-09-16",
+  "source_role": "ingredient_identity_reference",
+  "source_pdf": {
+    "path": "data_pipeline/Sources/OJ_L_202501175_EN_TXT.pdf",
+    "sha256": "03f8a31f86326b6ab6c659685e6442bb63295860b2aaded00c3b12858f4d952a"
+  },
+  "counts": {
+    "pdf_pages": 862,
+    "raw_rows": 30418,
+    "searchable_identities": 30416,
+    "duplicate_search_key_groups": 2
+  },
+  "generated_output_hashes": {
+    "data_pipeline/identity/eu_common_ingredient_glossary/raw/source_manifest.json": "83cf9d28e7877660553bd19e5b05dbc40a6f2a842ed8e19515bf317a185aab3a",
+    "data_pipeline/identity/eu_common_ingredient_glossary/raw/ingredient_rows.json": "c3095ea1ecef510629dfa06a34ffa5d777dcf464bcd148a10106efb3f22df440",
+    "data_pipeline/identity/eu_common_ingredient_glossary/processed/ingredients.json": "fc9d6c949fe3ec2ef24e3c5679e6126f8ebfde80cb0c5b0d680250accf7944d7"
+  }
+}
