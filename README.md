@@ -54,7 +54,7 @@ Use these Vercel project settings:
 - Output Directory: leave empty
 - Install Command: leave empty; Vercel reads `pyproject.toml` and `uv.lock`
 
-`pyproject.toml` points Vercel directly to `backend.app.main:app`; it does not create a second FastAPI application. The root [`vercel.json`](vercel.json) enables Fluid Compute, gives the function a 300-second ceiling for bounded Agent requests, includes the accepted runtime JSON plus the three PDFs used for evidence rendering, and excludes tests, fixtures, historical linkage work files, generated reports, caches, the frontend, and unused source PDFs.
+`pyproject.toml` points Vercel directly to `backend.app.main:app`; it does not create a second FastAPI application. The root [`vercel.json`](vercel.json) enables Fluid Compute, gives the function a 300-second ceiling for bounded Agent requests, and explicitly includes the accepted runtime JSON plus the three PDFs used for evidence rendering. Function-level `excludeFiles` is intentionally omitted for compatibility with the current FastAPI project configuration. Repository and local build clutter remain covered by `.gitignore`.
 
 Set these variables on the **backend project** for Production, and separately for Preview if preview deployments need the Agent:
 
