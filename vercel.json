@@ -4,8 +4,7 @@
   "fluid": true,
   "functions": {
     "backend/app/main.py": {
-      "maxDuration": 300,
-      "includeFiles": "{data_pipeline/accepted_output_hashes.json,data_pipeline/reports/manual_spot_check_results.json,data_pipeline/raw/*.json,data_pipeline/processed/*.json,data_pipeline/identity/eu_common_ingredient_glossary/accepted/*.json,data_pipeline/identity/eu_common_ingredient_glossary/processed/*.json,data_pipeline/identity/eu_common_ingredient_glossary/raw/*.json,data_pipeline/Sources/annexes-of-the-asean-cosmetic-directive.pdf,data_pipeline/Sources/singapore-health-products-cosmetic-products-acd-regulations-2007-current-2025-12-01.pdf,data_pipeline/Sources/OJ_L_202501175_EN_TXT.pdf}"
+      "maxDuration": 300
     }
   }
 }
