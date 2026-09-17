@@ -57,7 +57,15 @@ describe("evidence presentation", () => {
   });
 
   it("maps internal review codes to bounded readable labels", () => {
-    expect(reviewReasonLabel("no_source_backed_identity_match")).toBe("No source-backed ingredient identity was found");
-    expect(reviewReasonLabel("sg-rule: ambiguous_multi_case_concentration_not_normalized")).toMatch(/multiple concentration cases/);
+    expect(reviewReasonLabel("no_source_backed_identity_match")).toMatch(/could not match this ingredient/);
+    expect(reviewReasonLabel("sg-rule: ambiguous_multi_case_concentration_not_normalized")).toBe(
+      "This rule has several limits. Confirm which one applies to this product.",
+    );
+    expect(reviewReasonLabel("sg-rule: incompatible preparation_stage; no conversion performed")).toBe(
+      "The percentage is for a different preparation stage. Check when this concentration applies.",
+    );
+    expect(reviewReasonLabel("conditional_prohibition_wording_not_structured")).toBe(
+      "This prohibition has an exception or condition that a person needs to check.",
+    );
   });
 });

@@ -11,7 +11,7 @@ import type { Finding, FormulationSummary, IngredientResult } from "../types/scr
 const primaryCards: Array<{ key: keyof FormulationSummary; label: string; tone: string }> = [
   { key: "prohibited_substance_identified", label: "Prohibited-list substance", tone: "bg-red-600" },
   { key: "restriction_exceeded", label: "Limit exceeded", tone: "bg-red-600" },
-  { key: "professional_review_required", label: "Professional review finding", tone: "bg-amber-500" },
+  { key: "professional_review_required", label: "Needs human review", tone: "bg-amber-500" },
   { key: "identity_unresolved", label: "Identity unresolved", tone: "bg-slate-500" },
 ];
 
@@ -50,7 +50,7 @@ function attentionDescription(result: IngredientResult): string {
     return `Information missing${readableReason ? ` · ${readableReason}` : ""}`;
   }
   if (result.primary_finding === "professional_review_required") {
-    return `Professional review required${readableReason ? ` · ${readableReason}` : ""}`;
+    return `Human review needed${readableReason ? ` · ${readableReason}` : ""}`;
   }
   return `${findingPresentation[result.primary_finding].label}${readableReason ? ` · ${readableReason}` : " · Human review required"}`;
 }

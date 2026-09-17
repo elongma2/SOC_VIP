@@ -12,6 +12,7 @@ import pdfplumber
 from PIL import Image
 
 from backend.app.services.loader import RegulatoryStore
+from backend.app.services.ingredient_catalog import IngredientCatalog
 
 
 RenderMode = Literal["crop", "page"]
@@ -178,6 +179,79 @@ class SourceEvidenceRenderer:
             source_sha256=source_sha256,
             reference_number=str(raw.get("reference_number") or ""),
             pages=tuple(pages),
+            render_mode=mode,
+            dpi=dpi,
+        )
+
+
+class IdentitySourceEvidenceRenderer:
+    def __init__(self, catalogue: IngredientCatalog, dpi: int = RENDER_DPI):
+        self.catalogue = catalogue
+        self.dpi = dpi
+
+    def render(self, raw_record_id: str, mode: RenderMode) -> RenderedSourceEvidence:
+        raw = self.catalogue.raw_by_id.get(raw_record_id)
+        if raw is None:
+            raise SourceEvidenceNotFoundError("Accepted identity evidence record was not found")
+        return self._render_cached(
+            self.catalogue.dataset_version,
+            self.catalogue.source_document["sha256"],
+            raw_record_id,
+            mode,
+            self.dpi,
+        )
+
+    @lru_cache(maxsize=128)
+    def _render_cached(
+        self,
+        dataset_version: str,
+        source_sha256: str,
+        raw_record_id: str,
+        mode: RenderMode,
+        dpi: int,
+    ) -> RenderedSourceEvidence:
+        raw = self.catalogue.raw_by_id[raw_record_id]
+        source = self.catalogue.source_document
+        sources_root = (self.catalogue.root / "data_pipeline" / "Sources").resolve()
+        source_path = (sources_root / source["filename"]).resolve()
+        if source_path.parent != sources_root or not source_path.is_file():
+            raise SourceEvidenceUnavailableError("Accepted identity source PDF is unavailable")
+        if _sha256(source_path) != source_sha256:
+            raise SourceEvidenceUnavailableError("Accepted identity source PDF failed integrity verification")
+
+        page_number = raw.get("source_page")
+        row_bbox = raw.get("row_bbox") or []
+        try:
+            with pdfplumber.open(source_path) as pdf:
+                if not isinstance(page_number, int) or page_number < 1 or page_number > len(pdf.pages):
+                    raise SourceEvidenceCoordinatesError("Accepted identity source page is invalid")
+                page = pdf.pages[page_number - 1]
+                if mode == "crop":
+                    table_bbox = [row_bbox[0], 0.0, row_bbox[2], float(page.height)] if len(row_bbox) == 4 else []
+                    bbox = clamp_padded_bbox(
+                        table_bbox,
+                        row_bbox,
+                        float(page.width),
+                        float(page.height),
+                    )
+                    image = page.crop(bbox).to_image(resolution=dpi, antialias=True).original
+                else:
+                    image = page.to_image(resolution=dpi, antialias=True).original
+        except SourceEvidenceCoordinatesError:
+            raise
+        except Exception as error:
+            raise SourceEvidenceUnavailableError("Accepted identity source PDF could not be rendered") from error
+
+        output = io.BytesIO()
+        image.convert("RGB").save(output, format="PNG", optimize=True)
+        return RenderedSourceEvidence(
+            content=output.getvalue(),
+            etag=render_cache_etag(dataset_version, source_sha256, raw_record_id, mode, dpi),
+            dataset_version=dataset_version,
+            source_document=raw["source_document"],
+            source_sha256=source_sha256,
+            reference_number=str(raw.get("entry_number") or ""),
+            pages=(page_number,),
             render_mode=mode,
             dpi=dpi,
         )

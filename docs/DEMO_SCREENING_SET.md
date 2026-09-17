@@ -30,9 +30,9 @@ Leave Product context empty.
 | 8 | Complete Diethylene glycol conditional wording | 0.05%, no basis, finished product | Professional review required | Conditional Part I prohibition is deliberately non-executable |
 | 9 | BHT, CAS 128-37-0 | 0.10%, no basis, finished product | Professional review required | Exact ACD-only identity has no current Singapore correspondence |
 | 10 | Aminophylline, CAS 128-37-0 | No concentration | Professional review required | Name and CAS resolve to different source-backed identities |
-| 11 | Aqua | No concentration | Professional review required | EU catalogue identity is recognised; Singapore linkage is unresolved |
+| 11 | Aqua | No concentration | No issue identified within scoped rules | EU catalogue identity is recognised; no matching listing was identified in the four screened lists |
 | 12 | Mystery Extract | No concentration | Identity unresolved | No exact source-backed identity exists |
-| 13 | Diethylene glycol | No concentration | Professional review required | EU catalogue identity is recognised; Singapore linkage is unresolved |
+| 13 | Diethylene glycol | No concentration | Professional review required | The literal source-backed ` (except ` search identity locates the conditional Singapore Part I rule, whose semantics remain review-only |
 
 Expected summary:
 
@@ -80,7 +80,7 @@ The applicable Singapore Part II ref 6 `Other uses` limit is 3%.
 
 ## Important limitation for a “normal ingredient” demo
 
-The EU glossary recognises a common name such as `Aqua`, but catalogue recognition alone does not establish its relationship to the accepted Singapore lists. Until an explicit reviewed linkage decision exists, it returns `professional_review_required` with `identity_review`; the engine is not allowed to infer a scoped no-issue result.
+The EU glossary recognises a common name such as `Aqua`. The engine then searches Singapore Third Schedule Parts I/II and ACD Annex II/III. If no exact supported listing is found, it returns the bounded `no_issue_identified_within_scoped_rules` result. This does not establish ingredient safety, unrestricted use, or product compliance.
 
 DEMO-03 is the honest way to exercise `no_issue_identified_within_scoped_rules` with the current accepted baseline: it uses a resolved identity whose known Singapore restrictions do not apply to the selected product context.
 

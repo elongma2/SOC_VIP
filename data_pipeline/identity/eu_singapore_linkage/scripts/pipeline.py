@@ -164,8 +164,8 @@ def _review_queue_markdown(queue: dict[str, Any]) -> str:
     lines = [
         "# EU-to-Singapore identity linkage review queue",
         "",
-        f"Dataset: `{queue['dataset_version']}`  ",
-        f"Pending identities: **{queue['candidate_count']}**  ",
+        f"Dataset: `{queue['dataset_version']}`",
+        f"Pending identities: **{queue['candidate_count']}**",
         "Scope: Third Schedule Part I and Third Schedule Part II",
         "",
         "Candidate entries are not accepted linkage decisions.",

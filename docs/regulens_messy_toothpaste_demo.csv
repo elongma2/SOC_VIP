@@ -1,0 +1,25 @@
+Document Label,,Regulens Product Context Comparison
+FORMULA CODE,,CTX-TOOTH-001
+FORMULA NAME,,Messy context demo - toothpaste
+Product Type,,Toothpaste
+Concentrations refer to,,finished_product
+Owner / source,,Demo lab export - intentionally inconsistent
+
+Seq / phase,RM / trade name,INCI - what supplier wrote,CAS ref,Target dose,UOM,When measured,Supplier note,Random remarks
+01-WTR,Purified water grade A,AQUA,,balance,,finished_product,Lot AQ-22,Carrier added q.s.
+02-HUM,Humectant 99.5,Glycerine,,4,%,finished_product,COA pending,Non-canonical spelling is intentional
+03-ACT,B3 Active,NIACINAMIDE,,5%,,finished_product,Supplier sheet says B3,Exact catalogue name
+04-ACT,Pro-Vitamin B5,PANTHENOL,,1.50,percent,finished_product,RM-441,Split value and unit
+05-ACT,Natural Vitamin E,TOCOPHEROL,,0.50%,,finished_product,Drum VE-09,Embedded unit
+06-CTX,Oxidiser salt,Chlorates of alkali metals,,4.00,%,finished_product,Key comparison row,4% is within the 5% toothpaste limit
+07-PRES,Preservative stock,Tosylchloramide sodium,,.21,%,finished_product,PRES-77,Expected above the 0.20% maximum
+08-PRES,Short-name preservative,Tosyl chl Na,,0.10,,finished_product,Handwritten transfer,Identity and unit need confirmation
+09-REG,Trace solvent,Diethylene glycol,111-46-6,0.05%,,finished_product,Trace declaration,Conditional source wording requires review
+10-REG,Antioxidant sample,BHT,128-37-0,0.10,%,finished_product,ACD reference sample,ACD-only review example
+11-PROH,Theophylline blend,Aminophylline,317-34-0,,,finished_product,Legacy raw material,Direct prohibited-list identity
+12-PROH,Aromatic solvent,Benzene,71-43-2,,,finished_product,No dose in export,Direct prohibited-list identity
+13-PROH,Cyclic ether,Dioxane,123-91-1,,,finished_product,No dose in export,Direct prohibited-list identity
+14-SENS,Fragrance compound,PARFUM,,QS,,finished_product,Vendor composition withheld,QS must not become a number
+15-ACT,Coffee active,CAFFEINE,,0.20%,,finished_product,ACT-CAFF-2,Common catalogue identity
+16-MIN,Mineral salt,SODIUM CHLORIDE,,0.80,%,finished_product,Bag SC-18,Ordinary catalogue identity
+17-UNK,Vendor secret blend,Mystery Extract,,2.5%,,finished_product,Identity not disclosed,Expected unresolved identity

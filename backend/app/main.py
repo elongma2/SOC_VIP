@@ -7,21 +7,20 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from backend.app.routes import screening_router
+from backend.app.config import OpenAISettings, get_settings, log_openai_configuration
+from backend.app.routes import agent_router, screening_router
+from backend.app.services.formulation_agent import FormulationAgentService, OpenAIFormulationInterpreter
 from backend.app.services.loader import AcceptedBaselineError, RegulatoryStore, load_accepted_store
 from backend.app.services.ingredient_catalog import (
     AcceptedIdentityCatalogueError,
     IngredientCatalog,
     load_accepted_ingredient_catalog,
 )
-from backend.app.services.ingredient_linkage import (
-    AcceptedIngredientLinkageError,
-    IngredientLinkageStore,
-    load_accepted_ingredient_linkages,
-)
-from backend.app.services.source_rendering import SourceEvidenceRenderer
+from backend.app.services.source_rendering import IdentitySourceEvidenceRenderer, SourceEvidenceRenderer
+from backend.app.services.review_explanations import ReviewExplanationService
 
 
 def _json_safe(value: Any) -> Any:
@@ -41,10 +40,12 @@ def _json_safe(value: Any) -> Any:
 def create_app(
     store_loader: Callable[[], RegulatoryStore] = load_accepted_store,
     ingredient_catalog_loader: Callable[[], IngredientCatalog] = load_accepted_ingredient_catalog,
-    ingredient_linkage_loader: Callable[
-        [], IngredientLinkageStore
-    ] = load_accepted_ingredient_linkages,
+    formulation_agent_factory: Callable[[RegulatoryStore, IngredientCatalog | None], FormulationAgentService] | None = None,
+    settings_loader: Callable[[], OpenAISettings] = get_settings,
+    review_explanation_factory: Callable[[OpenAISettings], ReviewExplanationService] | None = None,
 ) -> FastAPI:
+    settings = settings_loader()
+
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         application.state.regulatory_store = None
@@ -52,8 +53,10 @@ def create_app(
         application.state.baseline_error = None
         application.state.ingredient_catalog = None
         application.state.identity_catalogue_error = None
-        application.state.ingredient_linkage_store = None
-        application.state.identity_linkage_error = None
+        application.state.identity_source_evidence_renderer = None
+        application.state.formulation_agent = None
+        application.state.review_explanation_service = None
+        log_openai_configuration(settings)
         try:
             application.state.regulatory_store = store_loader()
             application.state.source_evidence_renderer = SourceEvidenceRenderer(
@@ -63,12 +66,29 @@ def create_app(
             application.state.baseline_error = str(error)
         try:
             application.state.ingredient_catalog = ingredient_catalog_loader()
+            application.state.identity_source_evidence_renderer = IdentitySourceEvidenceRenderer(
+                application.state.ingredient_catalog
+            )
         except AcceptedIdentityCatalogueError as error:
             application.state.identity_catalogue_error = str(error)
-        try:
-            application.state.ingredient_linkage_store = ingredient_linkage_loader()
-        except AcceptedIngredientLinkageError as error:
-            application.state.identity_linkage_error = str(error)
+        if application.state.regulatory_store is not None:
+            if formulation_agent_factory is None:
+                application.state.formulation_agent = FormulationAgentService(
+                    application.state.regulatory_store,
+                    application.state.ingredient_catalog,
+                    model_runner=OpenAIFormulationInterpreter(api_key=settings.api_key),
+                    model=settings.agent_model,
+                )
+            else:
+                application.state.formulation_agent = formulation_agent_factory(
+                    application.state.regulatory_store,
+                    application.state.ingredient_catalog,
+                )
+        application.state.review_explanation_service = (
+            review_explanation_factory(settings)
+            if review_explanation_factory is not None
+            else ReviewExplanationService(settings.api_key, settings.explanation_model)
+        )
         yield
 
     application = FastAPI(
@@ -76,11 +96,32 @@ def create_app(
         version="0.1.0",
         lifespan=lifespan,
     )
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(settings.frontend_origins),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type"],
+    )
+
+    @application.get("/health", tags=["system"])
+    async def health() -> dict[str, str]:
+        regulatory_available = application.state.regulatory_store is not None
+        identity_available = application.state.ingredient_catalog is not None
+        return {
+            "status": "ok" if regulatory_available and identity_available else "degraded",
+            "regulatory_baseline": "available" if regulatory_available else "unavailable",
+            "identity_catalogue": "available" if identity_available else "unavailable",
+            "formulation_agent": "configured" if settings.configured else "not_configured",
+            "agent_model": settings.agent_model,
+            "explanation_model": settings.explanation_model,
+        }
 
     @application.exception_handler(RequestValidationError)
     async def validation_error_handler(_, error: RequestValidationError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"detail": _json_safe(error.errors())})
 
+    application.include_router(agent_router)
     application.include_router(screening_router)
     return application
 

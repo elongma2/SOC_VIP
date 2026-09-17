@@ -237,6 +237,26 @@ export interface RuleEvaluation {
   evidence: RuleEvidence;
 }
 
+export interface ReviewExplanation {
+  title: string;
+  summary: string;
+  what_to_check: string | null;
+  submitted_fact: string | null;
+  regulatory_fact: string | null;
+  source: "model" | "deterministic_fallback";
+}
+
+export interface OpenAIUsage {
+  configured_model: string;
+  actual_model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  tool_calls: number;
+  request_rounds: number;
+  cache_hits: number;
+}
+
 export interface IngredientResult {
   dataset_version: string;
   accepted_baseline_sha256: string;
@@ -248,9 +268,11 @@ export interface IngredientResult {
   review_required: boolean;
   review_types: Array<"identity_review" | "rule_review">;
   review_reasons: string[];
+  review_explanation: ReviewExplanation | null;
   rule_evaluations: RuleEvaluation[];
   inactive_evidence: RuleEvidence[];
   searched_singapore_parts: string[];
+  searched_regulatory_sections: string[];
   scope_note: string;
   submitted_row_number: number;
 }
@@ -304,6 +326,17 @@ export interface ScreeningResponse {
   };
   summary: FormulationSummary;
   ingredient_results: IngredientResult[];
+  review_explanation_metadata: {
+    configured: boolean;
+    configured_model: string;
+    actual_model: string | null;
+    status: string;
+    requested_count: number;
+    model_count: number;
+    fallback_count: number;
+    truncated_count: number;
+    usage: OpenAIUsage | null;
+  } | null;
 }
 
 export interface IngredientSearchResult {
@@ -323,6 +356,36 @@ export interface IngredientSearchResponse {
   dataset_version: string;
   accepted_baseline_sha256: string;
   results: IngredientSearchResult[];
+}
+
+export interface ACDIngredientSearchResult {
+  rule_id: string;
+  substance_id: string;
+  name: string;
+  annex: "Annex II Part 1" | "Annex III Part 1";
+  reference: string;
+  cas_numbers: string[];
+  restriction_type: string;
+  product_context: string | null;
+  concentration: RuleConcentration | null;
+  concentration_text: string | null;
+  other_conditions: string | null;
+  required_warning: string | null;
+  source_text: string;
+  source_pages: number[];
+  raw_record_id: string;
+  source_version: string | null;
+  source_url: string;
+  normalization_status: string;
+  review_reasons: string[];
+  manual_review_required: boolean;
+}
+
+export interface ACDIngredientSearchResponse {
+  query: string;
+  dataset_version: string;
+  accepted_baseline_sha256: string;
+  results: ACDIngredientSearchResult[];
 }
 
 export interface EditorIngredient {

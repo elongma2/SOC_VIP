@@ -9,13 +9,11 @@ from backend.app.models.screening import (
     ReviewType,
     RuleEvaluation,
     ScreeningResult,
-    SingaporeLinkageStatus,
 )
 from backend.app.services.evidence import build_rule_evidence
-from backend.app.services.loader import RegulatoryStore
+from backend.app.services.loader import REGULATORY_SEARCH_SCOPE, RegulatoryStore
 from backend.app.services.resolver import resolve_ingredient
 from backend.app.services.ingredient_catalog import IngredientCatalog
-from backend.app.services.ingredient_linkage import IngredientLinkageStore
 
 
 def _same(value: str | None, expected: str | None) -> bool:
@@ -34,8 +32,6 @@ def screen_ingredient(
     product_context: str | None = None,
     ingredient_catalog: IngredientCatalog | None = None,
     catalogue_error: str | None = None,
-    linkage_store: IngredientLinkageStore | None = None,
-    linkage_error: str | None = None,
 ) -> ScreeningResult:
     identity = resolve_ingredient(
         store,
@@ -43,8 +39,6 @@ def screen_ingredient(
         ingredient.cas_number,
         ingredient_catalog=ingredient_catalog,
         catalogue_error=catalogue_error,
-        linkage_store=linkage_store,
-        linkage_error=linkage_error,
     )
     if identity.status == IdentityStatus.UNRESOLVED:
         return ScreeningResult(
@@ -71,7 +65,10 @@ def screen_ingredient(
             review_reasons=identity.reasons,
         )
 
-    if identity.singapore_linkage_status == SingaporeLinkageStatus.VERIFIED_NOT_REPRESENTED:
+    substance_ids = identity.resolved_singapore_substance_ids
+    if not substance_ids and identity.resolved_singapore_substance_id:
+        substance_ids = [identity.resolved_singapore_substance_id]
+    if not substance_ids and identity.catalogue_identity is not None:
         return ScreeningResult(
             dataset_version=store.dataset_version,
             accepted_baseline_sha256=store.baseline_manifest_hash,
@@ -81,16 +78,15 @@ def screen_ingredient(
             primary_finding=Finding.NO_ISSUE,
             review_required=False,
             searched_singapore_parts=["Third Schedule Part I", "Third Schedule Part II"],
+            searched_regulatory_sections=list(REGULATORY_SEARCH_SCOPE),
             scope_note=(
-                "No corresponding identity was professionally verified in Third Schedule Parts I "
-                "and II for the accepted Singapore regulatory baseline. This does not establish "
-                "general Singapore permission, safety, or product compliance."
+                "The ingredient name is recognised in the EU Glossary of Common Ingredient Names. "
+                "No matching entry was identified within Singapore Third Schedule Parts I/II or "
+                "ACD Annex II/III currently covered by this screening engine. This does not "
+                "establish ingredient safety, unrestricted use, or overall product compliance."
             ),
         )
 
-    substance_ids = identity.resolved_singapore_substance_ids
-    if not substance_ids and identity.resolved_singapore_substance_id:
-        substance_ids = [identity.resolved_singapore_substance_id]
     assert substance_ids
     rules_by_id = {
         rule["rule_id"]: rule
@@ -336,4 +332,5 @@ def screen_ingredient(
         rule_evaluations=evaluations,
         inactive_evidence=inactive_evidence,
         searched_singapore_parts=["Third Schedule Part I", "Third Schedule Part II"],
+        searched_regulatory_sections=list(REGULATORY_SEARCH_SCOPE),
     )

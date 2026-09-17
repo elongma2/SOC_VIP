@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from backend.app.models.formulation import (
@@ -12,10 +14,16 @@ from backend.app.models.formulation import (
 )
 from backend.app.services.formulation import screen_formulation
 from backend.app.models.identity_catalogue import IngredientSearchResponse, IngredientSearchResult
+from backend.app.models.regulatory_search import (
+    ACDIngredientSearchResponse,
+    ACDIngredientSearchResult,
+)
 from backend.app.services.ingredient_catalog import IDENTITY_SOURCE_NAME, IngredientCatalog
 from backend.app.services.loader import RegulatoryStore
 from backend.app.services.parsing import UnsupportedProductContextError
+from backend.app.services.regulatory_search import search_acd_rules
 from backend.app.services.source_rendering import (
+    IdentitySourceEvidenceRenderer,
     RenderedSourceEvidence,
     RenderMode,
     SourceEvidenceCoordinatesError,
@@ -27,6 +35,7 @@ from backend.app.services.source_rendering import (
 
 router = APIRouter()
 CACHE_CONTROL = "public, max-age=31536000, immutable"
+LOGGER = logging.getLogger(__name__)
 
 
 def _accepted_store(request: Request) -> RegulatoryStore:
@@ -73,6 +82,17 @@ def _accepted_ingredient_catalog(request: Request) -> IngredientCatalog:
     return catalogue
 
 
+def _identity_source_renderer(request: Request) -> IdentitySourceEvidenceRenderer:
+    _accepted_ingredient_catalog(request)
+    renderer = getattr(request.app.state, "identity_source_evidence_renderer", None)
+    if renderer is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "identity_source_evidence_unavailable", "message": "Identity source evidence renderer is unavailable"},
+        )
+    return renderer
+
+
 def _image_response(request: Request, rendered: RenderedSourceEvidence) -> Response:
     etag = f'"{rendered.etag}"'
     headers = {
@@ -112,6 +132,28 @@ def source_evidence_crop_route(raw_record_id: str, request: Request) -> Response
 @router.get("/source-evidence/{raw_record_id}/page", responses={200: {"content": {"image/png": {}}}})
 def source_evidence_page_route(raw_record_id: str, request: Request) -> Response:
     return _render_source(request, raw_record_id, "page")
+
+
+def _render_identity_source(request: Request, raw_record_id: str, mode: RenderMode) -> Response:
+    try:
+        rendered = _identity_source_renderer(request).render(raw_record_id, mode)
+    except SourceEvidenceNotFoundError as error:
+        raise HTTPException(status_code=404, detail={"code": "identity_source_evidence_not_found", "message": str(error)}) from error
+    except SourceEvidenceCoordinatesError as error:
+        raise HTTPException(status_code=422, detail={"code": "identity_source_evidence_coordinates_unavailable", "message": str(error)}) from error
+    except SourceEvidenceUnavailableError as error:
+        raise HTTPException(status_code=503, detail={"code": "identity_source_evidence_unavailable", "message": str(error)}) from error
+    return _image_response(request, rendered)
+
+
+@router.get("/identity-source-evidence/{raw_record_id}", responses={200: {"content": {"image/png": {}}}})
+def identity_source_evidence_crop_route(raw_record_id: str, request: Request) -> Response:
+    return _render_identity_source(request, raw_record_id, "crop")
+
+
+@router.get("/identity-source-evidence/{raw_record_id}/page", responses={200: {"content": {"image/png": {}}}})
+def identity_source_evidence_page_route(raw_record_id: str, request: Request) -> Response:
+    return _render_identity_source(request, raw_record_id, "page")
 
 
 @router.get("/screening-options", response_model=ScreeningOptionsResponse)
@@ -156,20 +198,76 @@ def ingredient_search_route(
     )
 
 
+@router.get("/acd-ingredients", response_model=ACDIngredientSearchResponse)
+def acd_ingredient_search_route(
+    request: Request,
+    query: str = Query(min_length=2),
+    limit: int = Query(default=20, ge=1, le=20),
+) -> ACDIngredientSearchResponse:
+    store = _accepted_store(request)
+    normalized_query = query.strip()
+    if len(normalized_query) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "acd_search_query_too_short",
+                "message": "ACD ingredient search requires at least 2 non-whitespace characters",
+            },
+        )
+    rules = search_acd_rules(store, normalized_query, limit)
+    return ACDIngredientSearchResponse(
+        query=normalized_query,
+        dataset_version=store.dataset_version,
+        accepted_baseline_sha256=store.baseline_manifest_hash,
+        results=[
+            ACDIngredientSearchResult(
+                rule_id=rule["rule_id"],
+                substance_id=rule["substance_id"],
+                name=rule["substance_name"],
+                annex=rule["regulatory_section"],
+                reference=rule["reference_number"],
+                cas_numbers=rule["cas_numbers"],
+                restriction_type=rule["restriction_type"],
+                product_context=rule["product_context"],
+                concentration=rule["concentration"],
+                concentration_text=rule["concentration_text"],
+                other_conditions=rule["other_conditions"],
+                required_warning=rule["required_warning"],
+                source_text=rule["source_text"],
+                source_pages=rule["source_pages"],
+                raw_record_id=rule["raw_record_id"],
+                source_version=rule["source_version"],
+                source_url=rule["source_url"],
+                normalization_status=rule["normalization_status"],
+                review_reasons=rule["review_reasons"],
+                manual_review_required=rule["normalization_status"] != "normalized",
+            )
+            for rule in rules
+        ],
+    )
+
+
 @router.post("/screen-formulation", response_model=FormulationScreeningResponse)
 def screen_formulation_route(
     formulation: FormulationRequest,
     request: Request,
 ) -> FormulationScreeningResponse:
     try:
-        return screen_formulation(
+        deterministic_response = screen_formulation(
             _accepted_store(request),
             formulation,
             ingredient_catalog=getattr(request.app.state, "ingredient_catalog", None),
             catalogue_error=getattr(request.app.state, "identity_catalogue_error", None),
-            linkage_store=getattr(request.app.state, "ingredient_linkage_store", None),
-            linkage_error=getattr(request.app.state, "identity_linkage_error", None),
         )
+        explanation_service = request.app.state.review_explanation_service
+        try:
+            return explanation_service.enrich(deterministic_response)
+        except Exception as error:
+            LOGGER.warning(
+                "Review explanation enrichment failed (%s); deterministic fallback retained",
+                type(error).__name__,
+            )
+            return explanation_service.fallback_only(deterministic_response)
     except UnsupportedProductContextError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

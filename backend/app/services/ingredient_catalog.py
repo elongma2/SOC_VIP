@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from bisect import bisect_left
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -39,34 +40,50 @@ class IngredientCatalog:
     source_document: dict[str, Any]
     ingredient_count: int
     ingredients: tuple[dict[str, Any], ...]
+    raw_by_id: dict[str, dict[str, Any]]
     by_search_name: dict[str, dict[str, Any]]
+    sorted_search_names: tuple[str, ...]
+    ingredients_by_search_name: tuple[dict[str, Any], ...]
 
     def find_exact_name(self, value: str) -> dict[str, Any] | None:
         return self.by_search_name.get(search_name(value))
 
     def search_prefix(self, query: str) -> tuple[dict[str, Any], ...]:
         key = search_name(query)
-        return tuple(item for item in self.ingredients if item["search_name"].startswith(key))
-
-    def search_contains(self, query: str) -> tuple[dict[str, Any], ...]:
-        key = search_name(query)
-        return tuple(item for item in self.ingredients if key in item["search_name"])
+        start = bisect_left(self.sorted_search_names, key)
+        matches: list[dict[str, Any]] = []
+        for index in range(start, len(self.sorted_search_names)):
+            candidate = self.sorted_search_names[index]
+            if not candidate.startswith(key):
+                break
+            matches.append(self.ingredients_by_search_name[index])
+        return tuple(matches)
 
     def search(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
         key = search_name(query)
         ranked: list[tuple[int, str, str, dict[str, Any]]] = []
-        for ingredient in self.ingredients:
-            candidate = ingredient["search_name"]
-            if candidate == key:
-                rank = 0
-            elif candidate.startswith(key):
-                rank = 1
-            elif key in candidate:
-                rank = 2
-            else:
+        seen: set[str] = set()
+
+        exact = self.by_search_name.get(key)
+        if exact is not None:
+            ranked.append((0, key, exact["ingredient_id"], exact))
+            seen.add(exact["ingredient_id"])
+
+        for ingredient in self.search_prefix(key):
+            if ingredient["ingredient_id"] in seen:
                 continue
-            ranked.append((rank, candidate, ingredient["ingredient_id"], ingredient))
-        ranked.sort(key=lambda item: item[:3])
+            ranked.append((1, ingredient["search_name"], ingredient["ingredient_id"], ingredient))
+            seen.add(ingredient["ingredient_id"])
+            if len(ranked) >= limit:
+                break
+
+        if len(ranked) < limit:
+            for ingredient in self.ingredients_by_search_name:
+                if ingredient["ingredient_id"] in seen or key not in ingredient["search_name"]:
+                    continue
+                ranked.append((2, ingredient["search_name"], ingredient["ingredient_id"], ingredient))
+                if len(ranked) >= limit:
+                    break
         return [
             {**ingredient, "display_name": _display_name(ingredient["canonical_name"])}
             for _, _, _, ingredient in ranked[:limit]
@@ -99,11 +116,15 @@ def load_accepted_ingredient_catalog(root: Path | None = None) -> IngredientCata
     if source_manifest.get("dataset_version") != dataset_version or processed.get("dataset_version") != dataset_version:
         raise AcceptedIdentityCatalogueError("Identity catalogue dataset version mismatch")
     ingredients = tuple(processed["ingredients"])
+    raw_records = _load(raw_root / "ingredient_rows.json")["records"]
     if len(ingredients) != accepted["counts"]["searchable_identities"]:
         raise AcceptedIdentityCatalogueError("Accepted identity catalogue count mismatch")
     by_search_name = {ingredient["search_name"]: ingredient for ingredient in ingredients}
     if len(by_search_name) != len(ingredients):
         raise AcceptedIdentityCatalogueError("Accepted identity catalogue contains duplicate search keys")
+    sorted_ingredients = tuple(
+        sorted(ingredients, key=lambda ingredient: (ingredient["search_name"], ingredient["ingredient_id"]))
+    )
     return IngredientCatalog(
         root=root,
         dataset_version=dataset_version,
@@ -111,5 +132,8 @@ def load_accepted_ingredient_catalog(root: Path | None = None) -> IngredientCata
         source_document=source_manifest["documents"][0],
         ingredient_count=len(ingredients),
         ingredients=ingredients,
+        raw_by_id={record["raw_record_id"]: record for record in raw_records},
         by_search_name=by_search_name,
+        sorted_search_names=tuple(item["search_name"] for item in sorted_ingredients),
+        ingredients_by_search_name=sorted_ingredients,
     )

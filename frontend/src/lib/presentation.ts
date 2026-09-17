@@ -7,35 +7,35 @@ import type {
 } from "../types/screening";
 
 const reviewReasonLabels: Record<string, string> = {
-  no_source_backed_identity_match: "No source-backed ingredient identity was found",
-  neither_name_nor_cas_resolved_to_a_source_backed_identity: "Neither the submitted name nor CAS resolved to a source-backed identity",
-  supplied_name_and_cas_resolve_to_different_singapore_identities: "The submitted name and CAS resolve to different Singapore identities",
-  supplied_name_and_cas_have_multiple_common_singapore_identities: "The submitted name and CAS match multiple Singapore identities",
-  only_one_supplied_identifier_provides_a_unique_corroborated_identity: "Only one submitted identifier could be corroborated",
-  supplied_identifiers_do_not_establish_a_unique_singapore_identity: "The submitted identifiers do not establish one Singapore identity",
-  singapore_identity_bridge_is_not_aligned: "The ACD-to-Singapore identity link is not aligned",
-  identifier_matches_multiple_singapore_identities: "The identifier matches multiple Singapore identities",
-  exact_identity_exists_only_in_the_acd_snapshot: "An exact identity exists only in the ACD snapshot",
-  supplied_cas_is_malformed: "The submitted CAS identifier is malformed",
-  source_wording_or_regulatory_field_differs: "ACD and Singapore source wording or regulatory fields differ",
-  ambiguous_multi_case_concentration_not_normalized: "This rule contains multiple concentration cases that cannot yet be evaluated automatically",
-  conditional_prohibition_wording_not_structured: "The prohibition includes a source condition that has not been structured for automatic evaluation",
-  additional_numeric_condition_not_structured: "The rule includes an additional numerical condition that is not structured for automatic evaluation",
-  concentration_condition_not_normalized: "The concentration condition has not been normalized for automatic evaluation",
-  concentration_contains_multiple_or_ambiguous_values: "The source contains multiple or ambiguous concentration values",
-  multi_case_mapping_not_unambiguous: "The source cases cannot be mapped unambiguously",
-  no_current_singapore_reference_number_match: "No current Singapore reference-number match was found",
-  non_exhaustive_identifier_scope_not_structured: "The source identifier scope is not structured for automatic evaluation",
-  normalized_case_structure_differs_between_sources: "The normalized case structure differs between the ACD and Singapore sources",
-  ranged_reference_prevents_unique_entry_correspondence: "A ranged reference prevents a unique source correspondence",
-  jurisdiction_specific_source_wording: "The sources contain jurisdiction-specific wording",
-  malformed_cas_identifier_preserved: "A malformed source CAS identifier was preserved for review",
-  blank_deleted_or_ranged_source_entry: "The source contains a blank, deleted, or ranged entry",
-  catalogue_identity_singapore_linkage_unresolved: "Singapore identity linkage needs verification",
-  ingredient_catalogue_unavailable_identity_verification_withheld: "The ingredient catalogue is unavailable, so identity verification was withheld",
-  ingredient_linkage_baseline_unavailable: "The accepted Singapore identity-linkage baseline is unavailable",
-  linkage_not_valid_for_active_baseline: "The accepted identity linkage is not valid for the active source baseline or screening scope",
-  supplied_cas_cannot_be_corroborated_by_catalogue_source: "The submitted CAS cannot be corroborated by the name-only ingredient catalogue",
+  no_source_backed_identity_match: "We could not match this ingredient to a trusted source. Check the name or CAS number.",
+  neither_name_nor_cas_resolved_to_a_source_backed_identity: "We could not match the name or CAS number. Check both values.",
+  supplied_name_and_cas_resolve_to_different_singapore_identities: "The ingredient name and CAS number point to different substances. Check which one is correct.",
+  supplied_name_and_cas_have_multiple_common_singapore_identities: "The name and CAS number still leave more than one possible ingredient. Confirm the correct one.",
+  only_one_supplied_identifier_provides_a_unique_corroborated_identity: "Only the name or CAS number matched. Check the other value.",
+  supplied_identifiers_do_not_establish_a_unique_singapore_identity: "The submitted details do not identify one clear ingredient. Check the name and CAS number.",
+  singapore_identity_bridge_is_not_aligned: "The ACD and Singapore records do not clearly point to the same ingredient. Compare both sources.",
+  identifier_matches_multiple_singapore_identities: "This identifier matches more than one Singapore ingredient. Confirm the correct one.",
+  exact_identity_exists_only_in_the_acd_snapshot: "This ingredient appears in the ACD source, but its Singapore match is unclear. Compare the sources.",
+  supplied_cas_is_malformed: "The CAS number is not in a valid format. Check it.",
+  source_wording_or_regulatory_field_differs: "The ACD and Singapore records differ. Compare the source wording before deciding.",
+  ambiguous_multi_case_concentration_not_normalized: "This rule has several limits. Confirm which one applies to this product.",
+  conditional_prohibition_wording_not_structured: "This prohibition has an exception or condition that a person needs to check.",
+  additional_numeric_condition_not_structured: "This rule has another number or limit that the system cannot check automatically.",
+  concentration_condition_not_normalized: "The system could not apply this concentration limit automatically. Check the source rule.",
+  concentration_contains_multiple_or_ambiguous_values: "The rule lists more than one possible concentration. Confirm which value applies.",
+  multi_case_mapping_not_unambiguous: "The rule has several cases, and the system cannot tell which one applies.",
+  no_current_singapore_reference_number_match: "The ACD record has no clear matching Singapore reference. Check the current Singapore source.",
+  non_exhaustive_identifier_scope_not_structured: "The source describes a group of substances. Check whether this ingredient is included.",
+  normalized_case_structure_differs_between_sources: "The ACD and Singapore versions organise the cases differently. Compare them.",
+  ranged_reference_prevents_unique_entry_correspondence: "The source uses a range of references, so the exact matching entry is unclear.",
+  jurisdiction_specific_source_wording: "The ACD and Singapore wording differs. Check which Singapore wording applies.",
+  malformed_cas_identifier_preserved: "The source contains an unusual CAS number. Check it against the original document.",
+  blank_deleted_or_ranged_source_entry: "The source entry is blank, deleted, or covers a range and needs checking.",
+  catalogue_identity_singapore_linkage_unresolved: "The ingredient name is recognised, but its Singapore identity still needs checking.",
+  ingredient_catalogue_unavailable_identity_verification_withheld: "The ingredient-name catalogue is unavailable. Check the identity manually.",
+  ingredient_linkage_baseline_unavailable: "The older identity-linkage file is unavailable. Check the identity manually.",
+  linkage_not_valid_for_active_baseline: "The saved identity link does not match the current source versions. Check it again.",
+  supplied_cas_cannot_be_corroborated_by_catalogue_source: "The ingredient catalogue contains names only, so it cannot confirm the submitted CAS number.",
 };
 
 const statusLabels: Record<string, string> = {
@@ -87,8 +87,8 @@ export function displayIngredientName(result: IngredientResult): string {
 
 export function reviewTypeLabel(value: string): string {
   return {
-    identity_review: "Identity review",
-    rule_review: "Rule review",
+    identity_review: "Ingredient identity",
+    rule_review: "How the rule applies",
   }[value] ?? readableCode(value);
 }
 
@@ -103,6 +103,28 @@ export function matchMethodLabel(value: string): string {
 export function reviewReasonLabel(value: string): string {
   const separator = value.indexOf(": ");
   const reason = separator >= 0 ? value.slice(separator + 2) : value;
+  if (reason.startsWith("incompatible ")) {
+    const fields = reason.slice("incompatible ".length).split(";")[0].split(", ");
+    const labels: Record<string, string> = {
+      unit: "unit",
+      basis: "concentration basis",
+      preparation_stage: "preparation stage",
+    };
+    const readableFields = fields.map((field) => labels[field] ?? readableCode(field).toLowerCase());
+    if (readableFields.length === 1 && readableFields[0] === "preparation stage") {
+      return "The percentage is for a different preparation stage. Check when this concentration applies.";
+    }
+    return `The submitted ${readableFields.join(", ")} does not match the rule. Check it before comparing the concentration.`;
+  }
+  const runtimeReasons: Record<string, string> = {
+    "normalized restriction has no executable concentration constraint": "The rule does not contain a limit the system can compare automatically. Check the source rule.",
+    "source preparation stage is not sufficiently specified for comparison": "The rule does not clearly say when its concentration limit applies. Check the source wording.",
+    "concentration value, unit, basis, and stage are required": "Add the concentration details before this rule can be checked.",
+    "unsupported comparator or numerical limit": "The rule's limit cannot be calculated automatically. Check the source value.",
+    "other regulatory requirements were returned as evidence but not evaluated": "This rule has other requirements that still need to be checked.",
+    "required warning was returned as evidence but not evaluated": "This rule includes a warning that still needs to be checked.",
+  };
+  if (runtimeReasons[reason]) return runtimeReasons[reason];
   return reviewReasonLabels[reason] ?? readableCode(reason);
 }
 

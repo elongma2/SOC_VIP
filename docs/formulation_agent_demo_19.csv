@@ -1,0 +1,20 @@
+RM Name,INCI / Ingredient,CAS,Amount,Unit,Basis,Preparation Stage,Notes
+Prohibited example 1,Aminophylline,317-34-0,,,,,Direct Singapore Part I identity
+Prohibited example 2,Benzene,71-43-2,,,,,Direct Singapore Part I identity
+Prohibited example 3,Dioxane,123-91-1,,,,,Direct Singapore Part I identity
+Restricted within limit,Tosylchloramide sodium,,0.10%,,,,Expected within the Singapore maximum
+Restricted above limit,Tosylchloramide sodium,,0.21%,,,finished_product,Expected above the Singapore maximum
+Restricted missing amount,Tosylchloramide sodium,,,,,,Tests missing concentration information
+Stage mismatch,Tosylchloramide sodium,,0.10,percent,,ready_for_use,Tests incompatible preparation stage
+Conditional source wording,Diethylene glycol,111-46-6,0.05%,,,finished_product,Tests literal source-backed except alias
+ACD-only evidence,BHT,128-37-0,0.10%,,,finished_product,Tests ACD-only review behavior
+Conflicting identifiers,Aminophylline,128-37-0,,,,,Name and CAS point to different identities
+Vitamin B3,NIACINAMIDE,,5%,,,finished_product,Exact EU catalogue identity
+Humectant,Glycerine,,4%,,,,Deliberately non-canonical spelling for confirmation
+Pro-vitamin B5,PANTHENOL,,1.5%,,,finished_product,Exact EU catalogue identity
+Vitamin E,TOCOPHEROL,,0.5%,,,finished_product,Exact EU catalogue identity
+Water phase,AQUA,,balance,,,,Balance must never become a fabricated number
+Fragrance,PARFUM,,QS,,,,QS must never become a fabricated number
+Unknown material,Mystery Extract,,,,,,Expected unresolved identity
+Abbreviated preservative,Tosyl chl Na,,.21,,,,Tests identity and concentration-unit clarification
+Context-dependent restriction,Chlorates of alkali metals,,4%,,,finished_product,Leave product context empty to test missing context

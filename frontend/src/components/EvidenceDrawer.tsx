@@ -1,6 +1,7 @@
 import { ExternalLink, X } from "lucide-react";
 import { FindingBadge } from "./FindingBadge";
 import { SourceEvidence } from "./SourceEvidence";
+import { IdentitySourceEvidence } from "./IdentitySourceEvidence";
 import {
   basisLabel,
   comparatorLabel,
@@ -11,14 +12,14 @@ import {
   preparationStageLabel,
   readableCode,
   reviewReasonLabel,
-  reviewTypeLabel,
 } from "../lib/presentation";
 import {
   formatConcentration,
   isSingaporeEvaluation,
   regulationLabel,
 } from "../lib/screening";
-import type { IngredientResult, RuleEvaluation, SourceSnapshot } from "../types/screening";
+import type { IngredientResult, RuleEvaluation, ScreeningResponse, SourceSnapshot } from "../types/screening";
+import type { InputProvenance } from "../types/agent";
 
 function concentrationComparison(evaluation: RuleEvaluation) {
   const submitted = evaluation.submitted_concentration;
@@ -54,10 +55,14 @@ function ConcentrationComparison({ evaluation }: { evaluation: RuleEvaluation })
 export function EvidenceDrawer({
   result,
   sources,
+  inputProvenance,
+  explanationMetadata,
   onClose,
 }: {
   result: IngredientResult | null;
   sources: SourceSnapshot[];
+  inputProvenance?: InputProvenance | null;
+  explanationMetadata?: ScreeningResponse["review_explanation_metadata"];
   onClose: () => void;
 }) {
   if (!result) return null;
@@ -75,7 +80,7 @@ export function EvidenceDrawer({
     .filter((reference, index, all) => all.findIndex((item) => item.cross_reference_id === reference.cross_reference_id) === index);
   const counterparts = result.rule_evaluations.flatMap((evaluation) => evaluation.evidence.acd_counterpart_rules)
     .filter((counterpart, index, all) => all.findIndex((item) => item.rule_id === counterpart.rule_id) === index);
-  const readableReasons = [...new Set(result.review_reasons.map(reviewReasonLabel))];
+  const explanation = result.review_explanation;
 
   return (
     <>
@@ -113,27 +118,37 @@ export function EvidenceDrawer({
             )}
           </section>
 
+          {inputProvenance && (
+            <section>
+              <h3 className="drawer-title">Input provenance</h3>
+              <div className="metadata-grid mt-3">
+                <span>Source file</span><strong>{inputProvenance.filename}</strong>
+                <span>Source rows</span><strong>{inputProvenance.sourceRows.join(", ")}</strong>
+                <span>Original value</span><strong>{inputProvenance.originalValue ?? "—"}</strong>
+                <span>Interpreted as</span><strong>{inputProvenance.interpretedValue}</strong>
+                <span>Resolution</span><strong>{inputProvenance.confirmedByUser ? "Confirmed by user" : inputProvenance.method.replaceAll("_", " ")}</strong>
+                {inputProvenance.sourceMetadata.map((item, index) => <span key={`${item.source_row}-${item.source_column_index}-${index}`} className="contents"><span>{item.source_column}</span><strong>{item.source_value}</strong></span>)}
+              </div>
+            </section>
+          )}
+
           <section>
             <h3 className="drawer-title">Screening result</h3>
             <div className="metadata-grid mt-3">
               <span>Identity</span><strong>{readableCode(result.identity.status)}</strong>
               <span>Match method</span><strong>{result.identity.match_methods.map(matchMethodLabel).join(", ") || "—"}</strong>
               <span>Confirmed</span><strong>{result.confirmed_findings.map(readableCode).join(", ") || "—"}</strong>
-              <span>Review required</span><strong>{result.review_required ? "Yes" : "No"}</strong>
-              {result.review_required && <><span>Review type</span><strong>{result.review_types.map(reviewTypeLabel).join(", ")}</strong></>}
+              <span>Human check needed</span><strong>{result.review_required ? "Yes" : "No"}</strong>
             </div>
             {result.review_required && (
               <div className="review-panel mt-4">
-                <h4 className="font-semibold text-amber-950">Professional review needed</h4>
-                <p className="mt-1 text-xs text-amber-800">Automation stopped or retained a review flag because:</p>
-                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-950">
-                  {readableReasons.map((reason) => <li key={reason}>{reason}</li>)}
-                </ul>
-                {result.review_reasons.includes("catalogue_identity_singapore_linkage_unresolved") && (
-                  <p className="mt-3 text-sm text-amber-950">
-                    The ingredient name is recognised in the EU glossary, but this identity has not yet been verified against the Singapore regulatory dataset.
-                  </p>
-                )}
+                <h4 className="font-semibold text-amber-950">{explanation?.title ?? "Professional review needed"}</h4>
+                <p className="mt-2 text-sm leading-6 text-amber-950">{explanation?.summary ?? "Regulens could not apply the structured rule automatically."}</p>
+                {explanation?.what_to_check && <div className="mt-4 border-t border-amber-200 pt-3"><div className="text-xs font-semibold uppercase tracking-wide text-amber-800">What to check</div><p className="mt-1 text-sm text-amber-950">{explanation.what_to_check}</p></div>}
+                {(explanation?.submitted_fact || explanation?.regulatory_fact) && <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+                  {explanation.submitted_fact && <div className="rounded-md border border-amber-200 bg-white/60 p-3"><span className="block text-xs text-amber-800">Submitted</span><strong>{explanation.submitted_fact}</strong></div>}
+                  {explanation.regulatory_fact && <div className="rounded-md border border-amber-200 bg-white/60 p-3"><span className="block text-xs text-amber-800">Rule</span><strong>{explanation.regulatory_fact}</strong></div>}
+                </div>}
               </div>
             )}
           </section>
@@ -151,40 +166,24 @@ export function EvidenceDrawer({
                 <p className="mt-4 text-xs leading-5 text-slate-600">
                   Catalogue recognition confirms the ingredient name only. It does not establish Singapore permission, safety, or regulatory status.
                 </p>
-                <a className="source-link" href={result.identity.catalogue_identity.source_url} target="_blank" rel="noreferrer">
-                  Open identity source <ExternalLink size={14} />
-                </a>
               </div>
+              <IdentitySourceEvidence identity={result.identity.catalogue_identity} />
             </section>
           )}
 
-          {result.identity.catalogue_identity && (
+          {result.identity.catalogue_identity && result.searched_regulatory_sections.length > 0 && (
             <section>
-              <h3 className="drawer-title">Singapore linkage</h3>
+              <h3 className="drawer-title">Regulatory screening scope</h3>
               <div className="evidence-card">
-                {result.identity.singapore_linkage_status === "linked" && <>
-                  <strong className="text-slate-950">Linked to Singapore regulatory identity</strong>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    This reviewed catalogue identity is linked to the Singapore records shown below. Existing Singapore rule logic remains controlling.
-                  </p>
-                </>}
-                {result.identity.singapore_linkage_status === "verified_not_represented" && <>
-                  <strong className="text-slate-950">Verified for current screening scope</strong>
-                  <div className="metadata-grid mt-3">
-                    <span>Scope checked</span><strong>{result.identity.linkage_evidence?.screened_scope.join(" · ")}</strong>
-                    <span>Singapore baseline</span><strong>{result.identity.linkage_evidence?.singapore_regulatory_baseline}</strong>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-slate-600">{result.scope_note}</p>
-                </>}
-                {result.identity.singapore_linkage_status === "unresolved" && <>
-                  <strong className="text-amber-900">Needs verification</strong>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    The recognised catalogue identity has not been verified against the active Singapore screening scope.
-                  </p>
-                  {result.identity.linkage_evidence?.inapplicability_reasons.map((reason) => (
-                    <p className="mt-2 text-xs text-amber-800" key={reason}>{reason}</p>
+                <ul className="space-y-2 text-sm text-slate-700">
+                  {result.searched_regulatory_sections.map((section) => (
+                    <li className="flex items-start gap-2" key={section}><span aria-hidden="true" className="text-emerald-700">✓</span><span>{section} searched</span></li>
                   ))}
-                </>}
+                </ul>
+                {result.rule_evaluations.length === 0 && (
+                  <p className="mt-4 font-medium text-slate-900">No scoped regulatory listing identified</p>
+                )}
+                <p className="mt-2 text-sm leading-6 text-slate-600">{result.scope_note}</p>
               </div>
             </section>
           )}
@@ -275,33 +274,16 @@ export function EvidenceDrawer({
             </details>
           )}
 
-          {result.identity.linkage_evidence && (
+          {result.review_required && (
             <details className="acd-details">
               <summary>Technical provenance</summary>
               <div className="metadata-grid mt-4">
-                <span>Linkage ID</span><strong>{result.identity.linkage_evidence.linkage_id}</strong>
-                <span>Accepted status</span><strong>{readableCode(result.identity.linkage_evidence.accepted_status)}</strong>
-                <span>Applicable now</span><strong>{result.identity.linkage_evidence.applicable_to_active_baseline ? "Yes" : "No"}</strong>
-                <span>Identity dataset</span><strong>{result.identity.linkage_evidence.identity_dataset_version}</strong>
-                <span>Identity hash</span><strong className="break-all">{result.identity.linkage_evidence.identity_dataset_hash}</strong>
-                <span>Singapore baseline</span><strong>{result.identity.linkage_evidence.singapore_regulatory_baseline}</strong>
-                <span>Regulatory hash</span><strong className="break-all">{result.identity.linkage_evidence.singapore_regulatory_baseline_hash}</strong>
-                <span>Reviewer</span><strong>{result.identity.linkage_evidence.review.reviewer}</strong>
-                <span>Reviewed at</span><strong>{result.identity.linkage_evidence.review.reviewed_at}</strong>
-                <span>Review basis</span><strong>{result.identity.linkage_evidence.review.review_basis}</strong>
-                <span>Notes</span><strong>{result.identity.linkage_evidence.review.notes || "—"}</strong>
+                <span>Review types</span><strong>{result.review_types.join(", ")}</strong>
+                <span>Review reasons</span><strong>{result.review_reasons.join(", ")}</strong>
+                <span>Explanation source</span><strong>{explanation?.source ?? "unavailable"}</strong>
+                <span>Explanation model</span><strong>{explanation?.source === "model" ? (explanationMetadata?.actual_model ?? explanationMetadata?.configured_model ?? "—") : "Deterministic fallback"}</strong>
               </div>
-              {result.identity.linkage_evidence.singapore_targets.length > 0 && (
-                <div className="mt-4 space-y-2 text-xs text-slate-600">
-                  {result.identity.linkage_evidence.singapore_targets.map((target) => (
-                    <div className="rounded border border-slate-200 p-3" key={target.rule_id}>
-                      <strong className="text-slate-800">{target.part} · Ref {target.reference}</strong>
-                      <div className="mt-1 whitespace-pre-wrap">{target.source_substance_name}</div>
-                      <div className="mt-1 break-all">{target.raw_record_id} · {target.rule_id}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <p className="mt-3 text-xs leading-5 text-slate-500">Review guidance explains the existing deterministic result. Regulatory evidence and rule evaluation remain the source of truth.</p>
             </details>
           )}
 

@@ -17,7 +17,6 @@ from backend.app.services.compliance import screen_ingredient
 from backend.app.services.ingredient_catalog import IDENTITY_SOURCE_NAME, IngredientCatalog
 from backend.app.services.loader import RegulatoryStore
 from backend.app.models.identity_catalogue import IdentityCatalogueDataset, IdentityLinkageDataset
-from backend.app.services.ingredient_linkage import IngredientLinkageStore
 from backend.app.services.parsing import validate_formulation_request
 
 
@@ -43,8 +42,6 @@ def screen_formulation(
     request: FormulationRequest,
     ingredient_catalog: IngredientCatalog | None = None,
     catalogue_error: str | None = None,
-    linkage_store: IngredientLinkageStore | None = None,
-    linkage_error: str | None = None,
 ) -> FormulationScreeningResponse:
     duplicate_groups = validate_formulation_request(request, store)
     results = [
@@ -54,8 +51,6 @@ def screen_formulation(
             request.product_context,
             ingredient_catalog=ingredient_catalog,
             catalogue_error=catalogue_error,
-            linkage_store=linkage_store,
-            linkage_error=linkage_error,
         )
         for ingredient in request.ingredients
     ]
@@ -102,25 +97,9 @@ def screen_formulation(
                 error=(catalogue_error if ingredient_catalog is None else None),
             ),
             identity_linkage=IdentityLinkageDataset(
-                available=linkage_store is not None,
-                dataset_version=(linkage_store.dataset_version if linkage_store else None),
-                accepted_baseline_sha256=(
-                    linkage_store.baseline_manifest_hash if linkage_store else None
-                ),
-                identity_dataset_version=(
-                    linkage_store.identity_dataset_version if linkage_store else None
-                ),
-                singapore_regulatory_baseline=(
-                    linkage_store.singapore_regulatory_baseline if linkage_store else None
-                ),
-                screened_scope=(list(linkage_store.screened_scope) if linkage_store else []),
-                accepted_records=(linkage_store.counts["accepted_records"] if linkage_store else None),
-                linked=(linkage_store.counts["linked"] if linkage_store else None),
-                verified_not_represented=(
-                    linkage_store.counts["verified_not_represented"] if linkage_store else None
-                ),
-                unresolved=(linkage_store.counts["unresolved"] if linkage_store else None),
-                error=(linkage_error if linkage_store is None else None),
+                available=False,
+                screened_scope=[],
+                error=None,
             ),
         ),
         summary=summary,

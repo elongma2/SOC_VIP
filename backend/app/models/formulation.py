@@ -7,6 +7,7 @@ from pydantic import Field, field_validator, model_validator
 
 from data_pipeline.scripts.normalize import CAS_STRUCTURE_RE, cas_is_valid
 
+from .openai import OpenAIUsage
 from .screening import Finding, ScreeningResult, StrictModel
 from .identity_catalogue import IdentityCatalogueDataset, IdentityLinkageDataset
 
@@ -130,11 +131,24 @@ class IngredientScreeningResponse(ScreeningResult):
     submitted_row_number: int
 
 
+class ReviewExplanationMetadata(StrictModel):
+    configured: bool
+    configured_model: str
+    actual_model: str | None = None
+    status: str
+    requested_count: int = Field(default=0, ge=0)
+    model_count: int = Field(default=0, ge=0)
+    fallback_count: int = Field(default=0, ge=0)
+    truncated_count: int = Field(default=0, ge=0)
+    usage: OpenAIUsage | None = None
+
+
 class FormulationScreeningResponse(StrictModel):
     formulation: FormulationMetadata
     dataset: DatasetIdentity
     summary: FormulationSummary
     ingredient_results: list[IngredientScreeningResponse]
+    review_explanation_metadata: ReviewExplanationMetadata | None = None
 
 
 class ScreeningOptionsResponse(StrictModel):

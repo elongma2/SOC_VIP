@@ -8,10 +8,17 @@ from pathlib import Path
 from typing import Any
 
 from data_pipeline.scripts.normalize import cas_is_valid, conservative_text
+from backend.app.services.search_names import derived_except_search_name
 
 
 SINGAPORE_SECTIONS = {"Third Schedule Part I", "Third Schedule Part II"}
 ACD_SECTIONS = {"Annex II Part 1", "Annex III Part 1"}
+REGULATORY_SEARCH_SCOPE = (
+    "Third Schedule Part I",
+    "Third Schedule Part II",
+    "Annex II Part 1",
+    "Annex III Part 1",
+)
 
 
 class AcceptedBaselineError(RuntimeError):
@@ -48,6 +55,7 @@ class RegulatoryStore:
     executable_singapore_rules_by_substance_id: dict[str, tuple[dict[str, Any], ...]]
     inactive_rules_by_substance_id: dict[str, tuple[dict[str, Any], ...]]
     substances_by_name: dict[str, tuple[dict[str, Any], ...]]
+    substances_by_derived_search_name: dict[str, tuple[dict[str, Any], ...]]
     substances_by_cas: dict[str, tuple[dict[str, Any], ...]]
     singapore_rules_by_reference: dict[str, tuple[dict[str, Any], ...]]
     singapore_rules_by_schedule_reference: dict[tuple[str, str], tuple[dict[str, Any], ...]]
@@ -159,11 +167,15 @@ def load_accepted_store(root: Path | None = None) -> RegulatoryStore:
         rules_by_raw_record[rule["raw_record_id"]].append(rule)
 
     by_name: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    by_derived_name: dict[str, list[dict[str, Any]]] = defaultdict(list)
     by_cas: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for substance in substances:
         if not substance["active"]:
             continue
         by_name[substance["normalized_substance_name"]].append(substance)
+        derived_name = derived_except_search_name(substance["original_substance_name"])
+        if derived_name:
+            by_derived_name[conservative_text(derived_name)].append(substance)
         for cas_number in substance["cas_numbers"]:
             if cas_is_valid(cas_number):
                 by_cas[cas_number].append(substance)
@@ -199,6 +211,7 @@ def load_accepted_store(root: Path | None = None) -> RegulatoryStore:
         executable_singapore_rules_by_substance_id=_tuples(executable_rules),
         inactive_rules_by_substance_id=_tuples(inactive_rules),
         substances_by_name=_tuples(by_name),
+        substances_by_derived_search_name=_tuples(by_derived_name),
         substances_by_cas=_tuples(by_cas),
         singapore_rules_by_reference=_tuples(singapore_by_reference),
         singapore_rules_by_schedule_reference=_tuples(singapore_by_schedule_reference),

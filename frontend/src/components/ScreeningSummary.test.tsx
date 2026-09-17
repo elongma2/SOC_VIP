@@ -24,7 +24,7 @@ describe("ScreeningSummary", () => {
     expect(screen.getByText("3 of 3 ingredients require attention")).toBeInTheDocument();
     expect(screen.getByText("2 deterministic regulatory findings · 1 unresolved identity")).toBeInTheDocument();
 
-    const reviewCard = screen.getByText("Professional review finding").closest<HTMLElement>(".summary-card")!;
+    const reviewCard = screen.getByText("Needs human review").closest<HTMLElement>(".summary-card")!;
     expect(within(reviewCard).getByText("0")).toBeInTheDocument();
     const unresolvedCard = screen.getByText("Identity unresolved").closest<HTMLElement>(".summary-card")!;
     expect(within(unresolvedCard).getByText("1")).toBeInTheDocument();

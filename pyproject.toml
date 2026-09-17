@@ -6,15 +6,20 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.141.1",
+    "openai>=3.14.1",
     "pdfplumber>=0.11.10",
     "pydantic>=2.13.5",
     "pypdf>=6.18.1",
     "python-dotenv>=1.2.3",
+    "python-multipart>=0.0.32",
     "uvicorn>=0.53.0",
 ]
 
 [project.scripts]
 soc-vip = "soc_vip:main"
+
+[tool.vercel]
+entrypoint = "backend.app.main:app"
 
 [build-system]
 requires = ["uv_build>=0.12.7,<0.13.0"]
@@ -28,3 +33,6 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+markers = [
+    "openai_integration: optional live OpenAI Responses API test",
+]

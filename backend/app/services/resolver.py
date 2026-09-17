@@ -14,10 +14,6 @@ from backend.app.models.screening import (
     SingaporeLinkageStatus,
 )
 from backend.app.services.ingredient_catalog import IDENTITY_SOURCE_NAME, IngredientCatalog
-from backend.app.services.ingredient_linkage import (
-    IngredientLinkageStore,
-    assess_linkage,
-)
 from backend.app.services.loader import ACD_SECTIONS, SINGAPORE_SECTIONS, RegulatoryStore
 
 
@@ -103,8 +99,21 @@ def _resolve_regulatory_ingredient(
     reasons: list[str] = []
 
     if name and name.strip():
-        substances = store.substances_by_name.get(conservative_text(name), ())
-        name_sg, name_acd, name_statuses = _matches_for_substances(store, substances, "exact_name")
+        name_key = conservative_text(name)
+        exact = _matches_for_substances(
+            store, store.substances_by_name.get(name_key, ()), "exact_name"
+        )
+        derived = _matches_for_substances(
+            store,
+            store.substances_by_derived_search_name.get(name_key, ()),
+            "derived_source_name_except_clause",
+        )
+        name_sg = _merge([*exact[0], *derived[0]])
+        name_acd = _merge([*exact[1], *derived[1]])
+        name_statuses = defaultdict(set)
+        for statuses in (exact[2], derived[2]):
+            for substance_id, values in statuses.items():
+                name_statuses[substance_id].update(values)
 
     supplied_cas = cas_number.strip() if cas_number else None
     if supplied_cas:
@@ -141,7 +150,13 @@ def _resolve_regulatory_ingredient(
             source_type, source_name = _resolved_source(all_sg, common_id)
             return IdentityResolution(
                 status=IdentityStatus.RESOLVED,
-                match_methods=["exact_name", "exact_cas"],
+                match_methods=sorted(
+                    {
+                        method
+                        for candidate in [*name_sg, *cas_sg]
+                        for method in candidate.match_methods
+                    }
+                ),
                 singapore_candidates=all_sg,
                 acd_candidates=all_acd,
                 resolved_singapore_substance_id=common_id,
@@ -209,8 +224,6 @@ def resolve_ingredient(
     cas_number: str | None,
     ingredient_catalog: IngredientCatalog | None = None,
     catalogue_error: str | None = None,
-    linkage_store: IngredientLinkageStore | None = None,
-    linkage_error: str | None = None,
 ) -> IdentityResolution:
     regulatory = _resolve_regulatory_ingredient(store, name, cas_number)
     if regulatory.status != IdentityStatus.UNRESOLVED or not (name and name.strip()):
@@ -252,90 +265,17 @@ def resolve_ingredient(
             acd_candidates=regulatory.acd_candidates,
             identity_source_type=IdentitySourceType.INGREDIENT_CATALOGUE,
             identity_source_name=IDENTITY_SOURCE_NAME,
-            singapore_linkage_status=SingaporeLinkageStatus.UNRESOLVED,
+            singapore_linkage_status=SingaporeLinkageStatus.NOT_APPLICABLE,
             catalogue_identity=catalogue_identity,
             reasons=reasons,
         )
-
-    if linkage_store is None:
-        reasons.append(
-            "ingredient_linkage_baseline_unavailable"
-            if linkage_error
-            else "catalogue_identity_singapore_linkage_unresolved"
-        )
-        return IdentityResolution(
-            status=IdentityStatus.REVIEW_REQUIRED,
-            match_methods=["exact_catalogue_name"],
-            singapore_candidates=regulatory.singapore_candidates,
-            acd_candidates=regulatory.acd_candidates,
-            identity_source_type=IdentitySourceType.INGREDIENT_CATALOGUE,
-            identity_source_name=IDENTITY_SOURCE_NAME,
-            singapore_linkage_status=SingaporeLinkageStatus.UNRESOLVED,
-            catalogue_identity=catalogue_identity,
-            reasons=reasons,
-        )
-
-    record = linkage_store.find(ingredient["ingredient_id"])
-    if record is None:
-        reasons.append("catalogue_identity_singapore_linkage_unresolved")
-        return IdentityResolution(
-            status=IdentityStatus.REVIEW_REQUIRED,
-            match_methods=["exact_catalogue_name"],
-            singapore_candidates=regulatory.singapore_candidates,
-            acd_candidates=regulatory.acd_candidates,
-            identity_source_type=IdentitySourceType.INGREDIENT_CATALOGUE,
-            identity_source_name=IDENTITY_SOURCE_NAME,
-            singapore_linkage_status=SingaporeLinkageStatus.UNRESOLVED,
-            catalogue_identity=catalogue_identity,
-            reasons=reasons,
-        )
-
-    assessment = assess_linkage(
-        linkage_store, record, ingredient, ingredient_catalog, store
-    )
-    if assessment.effective_status == SingaporeLinkageStatus.LINKED:
-        linked_candidates = _merge(
-            _candidate(store.substances_by_id[substance_id], ["accepted_catalogue_linkage"])
-            for substance_id in assessment.singapore_substance_ids
-        )
-        singular = (
-            assessment.singapore_substance_ids[0]
-            if len(assessment.singapore_substance_ids) == 1
-            else None
-        )
-        return IdentityResolution(
-            status=IdentityStatus.RESOLVED,
-            match_methods=["exact_catalogue_name", "accepted_catalogue_linkage"],
-            singapore_candidates=linked_candidates,
-            acd_candidates=regulatory.acd_candidates,
-            resolved_singapore_substance_id=singular,
-            resolved_singapore_substance_ids=list(assessment.singapore_substance_ids),
-            identity_source_type=IdentitySourceType.INGREDIENT_CATALOGUE,
-            identity_source_name=IDENTITY_SOURCE_NAME,
-            singapore_linkage_status=SingaporeLinkageStatus.LINKED,
-            catalogue_identity=catalogue_identity,
-            linkage_evidence=assessment.evidence,
-        )
-    if assessment.effective_status == SingaporeLinkageStatus.VERIFIED_NOT_REPRESENTED:
-        return IdentityResolution(
-            status=IdentityStatus.RESOLVED,
-            match_methods=["exact_catalogue_name", "accepted_verified_not_represented"],
-            identity_source_type=IdentitySourceType.INGREDIENT_CATALOGUE,
-            identity_source_name=IDENTITY_SOURCE_NAME,
-            singapore_linkage_status=SingaporeLinkageStatus.VERIFIED_NOT_REPRESENTED,
-            catalogue_identity=catalogue_identity,
-            linkage_evidence=assessment.evidence,
-        )
-    reasons.extend(assessment.reasons)
     return IdentityResolution(
-        status=IdentityStatus.REVIEW_REQUIRED,
+        status=IdentityStatus.RESOLVED,
         match_methods=["exact_catalogue_name"],
         singapore_candidates=regulatory.singapore_candidates,
         acd_candidates=regulatory.acd_candidates,
         identity_source_type=IdentitySourceType.INGREDIENT_CATALOGUE,
         identity_source_name=IDENTITY_SOURCE_NAME,
-        singapore_linkage_status=SingaporeLinkageStatus.UNRESOLVED,
+        singapore_linkage_status=SingaporeLinkageStatus.NOT_APPLICABLE,
         catalogue_identity=catalogue_identity,
-        linkage_evidence=assessment.evidence,
-        reasons=reasons,
     )

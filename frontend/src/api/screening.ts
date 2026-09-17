@@ -1,4 +1,4 @@
-import type { FieldIssue, FormulationRequest, IngredientSearchResponse, ScreeningOptions, ScreeningResponse } from "../types/screening";
+import type { ACDIngredientSearchResponse, FieldIssue, FormulationRequest, IngredientSearchResponse, ScreeningOptions, ScreeningResponse } from "../types/screening";
 
 const configuredBase = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const apiBase = configuredBase.replace(/\/$/, "");
@@ -57,6 +57,15 @@ export function screenFormulation(request: FormulationRequest): Promise<Screenin
   });
 }
 
-export function searchIngredients(query: string, signal?: AbortSignal): Promise<IngredientSearchResponse> {
-  return requestJson<IngredientSearchResponse>(`/ingredients?query=${encodeURIComponent(query)}&limit=20`, { signal });
+export function searchIngredients(query: string, signal?: AbortSignal, limit = 20): Promise<IngredientSearchResponse> {
+  return requestJson<IngredientSearchResponse>(`/ingredients?query=${encodeURIComponent(query)}&limit=${limit}`, { signal });
+}
+
+export function identitySourceEvidenceUrl(rawRecordId: string, mode: "crop" | "page" = "crop"): string {
+  const suffix = mode === "page" ? "/page" : "";
+  return `${apiBase}/identity-source-evidence/${encodeURIComponent(rawRecordId)}${suffix}`;
+}
+
+export function searchACDIngredients(query: string, signal?: AbortSignal, limit = 20): Promise<ACDIngredientSearchResponse> {
+  return requestJson<ACDIngredientSearchResponse>(`/acd-ingredients?query=${encodeURIComponent(query)}&limit=${limit}`, { signal });
 }

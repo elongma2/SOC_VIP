@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -188,6 +188,15 @@ class RuleEvaluation(StrictModel):
     evidence: RuleEvidence
 
 
+class ReviewExplanation(StrictModel):
+    title: str = Field(max_length=80)
+    summary: str = Field(max_length=500)
+    what_to_check: str | None = Field(default=None, max_length=300)
+    submitted_fact: str | None = Field(default=None, max_length=200)
+    regulatory_fact: str | None = Field(default=None, max_length=300)
+    source: Literal["model", "deterministic_fallback"]
+
+
 class ScreeningResult(StrictModel):
     dataset_version: str
     accepted_baseline_sha256: str
@@ -199,9 +208,11 @@ class ScreeningResult(StrictModel):
     review_required: bool
     review_types: list[ReviewType] = Field(default_factory=list)
     review_reasons: list[str] = Field(default_factory=list)
+    review_explanation: ReviewExplanation | None = None
     rule_evaluations: list[RuleEvaluation] = Field(default_factory=list)
     inactive_evidence: list[RuleEvidence] = Field(default_factory=list)
     searched_singapore_parts: list[str] = Field(default_factory=list)
+    searched_regulatory_sections: list[str] = Field(default_factory=list)
     scope_note: str = (
         "This is an initial Singapore screening result within the implemented rules only; "
         "professional review remains required."

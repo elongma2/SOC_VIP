@@ -74,17 +74,12 @@ def test_linkage_loader_rejects_modified_accepted_output(tmp_path):
         load_accepted_ingredient_linkages(tmp_path)
 
 
-def test_pilot_queue_is_deterministic_and_never_promotes_candidates():
+def test_dormant_review_queue_is_empty_deterministic_and_never_promotes_candidates():
     first = build_review_queue(ROOT)
     second = build_review_queue(ROOT)
     assert first == second
-    assert [item["catalogue_canonical_name"] for item in first["records"]] == [
-        "AQUA",
-        "DIETHYLENE GLYCOL",
-        "NIACINAMIDE",
-    ]
-    assert all(not item["singapore_candidates"] for item in first["records"])
-    assert all(item["current_status"] == "unresolved" for item in first["records"])
+    assert first["candidate_count"] == 0
+    assert first["records"] == []
 
 
 def test_reviewed_absence_and_multitarget_link_are_derived_deterministically():

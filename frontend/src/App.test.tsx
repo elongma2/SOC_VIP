@@ -20,6 +20,24 @@ function mockSuccessfulApi() {
 describe("formula screening vertical slice", () => {
   beforeEach(() => vi.restoreAllMocks());
 
+  it("renders Regulens branding and only the active MVP workflows", async () => {
+    mockSuccessfulApi();
+    const user = userEvent.setup();
+    render(<App />);
+    expect(screen.getByText("Regulens")).toBeInTheDocument();
+    expect(screen.getByLabelText("Regulens inspection mark")).toBeInTheDocument();
+    expect(screen.queryByText("AseanCos")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
+    expect(screen.queryByText("History")).not.toBeInTheDocument();
+    expect(screen.queryByText("About")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New Screen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sources" })).toBeInTheDocument();
+    expect(screen.getByText("Singapore screening scope")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /Singapore/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    expect(screen.getByRole("heading", { name: /Turn a formulation file into screening input/ })).toBeInTheDocument();
+  });
+
   it("screens TEST-001 and renders row-based results from the API", async () => {
     mockSuccessfulApi();
     const user = userEvent.setup();
@@ -35,7 +53,7 @@ describe("formula screening vertical slice", () => {
     expect(within(aminoRow).getByText("—")).toBeInTheDocument();
     expect(within(aminoRow).getByText(/Regulation 6\(1\)/)).toBeInTheDocument();
 
-    const reviewCard = screen.getByText("Professional review finding").closest<HTMLElement>(".summary-card")!;
+    const reviewCard = screen.getByText("Needs human review").closest<HTMLElement>(".summary-card")!;
     expect(within(reviewCard).getByText("0")).toBeInTheDocument();
     expect(screen.getByText("1 ingredient requires human review")).toBeInTheDocument();
     expect(screen.getByText(/Screening scope: Singapore ingredient rules covered by the current MVP/)).toBeInTheDocument();
@@ -79,7 +97,7 @@ describe("formula screening vertical slice", () => {
     expect(within(acdDetails).getByText("Product context")).toBeInTheDocument();
     expect(within(acdDetails).getByText("Ready for use")).toBeInTheDocument();
     expect(within(acdDetails).getByText("Finished product")).toBeInTheDocument();
-    expect(within(acdDetails).getByText("ACD and Singapore source wording or regulatory fields differ")).toBeInTheDocument();
+    expect(within(acdDetails).getByText("The ACD and Singapore records differ. Compare the source wording before deciding.")).toBeInTheDocument();
     expect(within(drawer).queryByText("Technical provenance")).not.toBeInTheDocument();
     expect(within(drawer).queryByText(/\[parent\]/)).not.toBeInTheDocument();
   });

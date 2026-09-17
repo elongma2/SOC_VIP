@@ -1,10 +1,9 @@
-import { AlertTriangle, ChevronDown, LoaderCircle, ShieldCheck } from "lucide-react";
+import { AlertTriangle, LoaderCircle, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiError, getScreeningOptions, screenFormulation } from "../api/screening";
 import { EvidenceDrawer } from "../components/EvidenceDrawer";
 import { FormulaEditor } from "../components/FormulaEditor";
-import { ResultsTable } from "../components/ResultsTable";
-import { ScreeningSummary } from "../components/ScreeningSummary";
+import { ScreeningResultsPanel } from "../components/ScreeningResultsPanel";
 import { adversePrimaryFindings } from "../lib/screening";
 import type {
   EditorIngredient,
@@ -159,9 +158,7 @@ export function FormulaScreeningPage() {
             <p className="mt-2 text-sm font-medium text-slate-700">{formLabel}</p>
           </div>
           <div className="flex items-center gap-3">
-            <button className="jurisdiction-control" type="button" aria-label="Jurisdiction: Singapore">
-              <ShieldCheck size={16} /> Singapore <ChevronDown size={14} />
-            </button>
+            <div className="scope-label"><ShieldCheck size={16} /> Singapore screening scope</div>
             <button className="primary-button" type="button" onClick={submit} disabled={loading || integrityFailure || !options}>
               {loading ? <><LoaderCircle className="animate-spin" size={16} /> Screening…</> : "Run screen"}
             </button>
@@ -169,7 +166,7 @@ export function FormulaScreeningPage() {
         </header>
 
         {error && (
-          <div className={`mb-5 flex items-start gap-3 border px-4 py-3 text-sm ${integrityFailure ? "border-red-200 bg-red-50 text-red-800" : "border-amber-200 bg-amber-50 text-amber-900"}`} role="alert">
+          <div className={`mb-5 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${integrityFailure ? "border-red-200 bg-red-50 text-red-800" : "border-amber-200 bg-amber-50 text-amber-900"}`} role="alert">
             <AlertTriangle className="mt-0.5 shrink-0" size={16} />
             <span>{error}</span>
           </div>
@@ -189,25 +186,9 @@ export function FormulaScreeningPage() {
           onIngredientsChange={setIngredients}
         />
 
-        {response && (
-          <div className="mt-9 space-y-5">
-            <ScreeningSummary
-              summary={response.summary}
-              results={response.ingredient_results}
-              selectedRow={selectedRow}
-              onSelect={setSelectedRow}
-            />
-            <ResultsTable results={response.ingredient_results} selectedRow={selectedRow} onSelect={setSelectedRow} />
-            <p className="border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500">
-              Screening scope: Singapore ingredient rules covered by the current MVP. Findings are ingredient-level screening results and are not a formulation-level compliance conclusion.
-            </p>
-            <p className="text-xs leading-5 text-slate-500">
-              Dataset {response.dataset.dataset_version} · Accepted baseline {response.dataset.accepted_baseline_sha256.slice(0, 12)}…
-            </p>
-          </div>
-        )}
+        {response && <ScreeningResultsPanel response={response} selectedRow={selectedRow} onSelect={setSelectedRow} />}
       </main>
-      <EvidenceDrawer result={selectedResult} sources={response?.dataset.sources ?? []} onClose={() => setSelectedRow(null)} />
+      <EvidenceDrawer result={selectedResult} sources={response?.dataset.sources ?? []} explanationMetadata={response?.review_explanation_metadata ?? null} onClose={() => setSelectedRow(null)} />
     </div>
   );
 }

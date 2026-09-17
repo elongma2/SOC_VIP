@@ -48,9 +48,16 @@ const baseResult = (row: number, name: string): IngredientResult => ({
   review_required: false,
   review_types: [],
   review_reasons: [],
+  review_explanation: null,
   rule_evaluations: [],
   inactive_evidence: [],
   searched_singapore_parts: ["Third Schedule Part I", "Third Schedule Part II"],
+  searched_regulatory_sections: [
+    "Third Schedule Part I",
+    "Third Schedule Part II",
+    "Annex II Part 1",
+    "Annex III Part 1",
+  ],
   scope_note: "Initial Singapore screening only.",
   submitted_row_number: row,
 });
@@ -172,6 +179,7 @@ mystery.review_required = true;
 mystery.review_types = ["identity_review"];
 mystery.review_reasons = ["no_source_backed_identity_match"];
 mystery.searched_singapore_parts = [];
+mystery.searched_regulatory_sections = [];
 
 export const testResponse: ScreeningResponse = {
   formulation: { formulation_id: "TEST-001", formulation_name: "My test formulation", product_context: null },
@@ -227,6 +235,7 @@ export const testResponse: ScreeningResponse = {
     duplicate_row_groups: [],
   },
   ingredient_results: [aminophylline, tosylchloramide, mystery],
+  review_explanation_metadata: null,
 };
 
 export { baseResult, evidence };

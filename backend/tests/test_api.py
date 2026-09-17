@@ -10,15 +10,12 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from backend.app.main import create_app
+from backend.app.config import OpenAISettings
+from backend.app.main import create_app as build_app
 from backend.app.services.loader import AcceptedBaselineError, load_accepted_store
 from backend.app.services.ingredient_catalog import (
     AcceptedIdentityCatalogueError,
     load_accepted_ingredient_catalog,
-)
-from backend.app.services.ingredient_linkage import (
-    AcceptedIngredientLinkageError,
-    load_accepted_ingredient_linkages,
 )
 from backend.app.services.source_rendering import (
     RENDER_DPI,
@@ -26,10 +23,14 @@ from backend.app.services.source_rendering import (
     clamp_padded_bbox,
     render_cache_etag,
 )
-from data_pipeline.identity.eu_singapore_linkage.scripts.pipeline import validate_review_input
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def create_app(*args, **kwargs):
+    kwargs.setdefault("settings_loader", lambda: OpenAISettings(None, "gpt-5.6-sol", "gpt-5.6-luna"))
+    return build_app(*args, **kwargs)
 
 
 def concentration(value=0.2, unit="percent", basis=None, stage="finished_product"):
@@ -72,6 +73,37 @@ def test_valid_one_ingredient_request(client):
     assert payload["formulation"]["formulation_id"] == "FORM-001"
     assert payload["summary"]["ingredients_submitted"] == 1
     assert payload["ingredient_results"][0]["submitted_row_number"] == 1
+
+
+def test_health_reports_runtime_availability_without_secrets(client):
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "regulatory_baseline": "available",
+        "identity_catalogue": "available",
+        "formulation_agent": "not_configured",
+        "agent_model": "gpt-5.6-sol",
+        "explanation_model": "gpt-5.6-luna",
+    }
+    assert "OPENAI_API_KEY" not in response.text
+
+
+def test_local_frontend_origin_is_allowed_without_wildcard_cors(client):
+    response = client.options(
+        "/screen-formulation",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert response.headers["access-control-allow-methods"] == "GET, POST, OPTIONS"
+    assert response.headers["access-control-allow-origin"] != "*"
 
 
 def test_screening_options_are_source_backed_and_unambiguous(client, store):
@@ -363,6 +395,48 @@ def test_source_evidence_unknown_record_fails_safely(client):
     assert response.json()["detail"]["code"] == "source_evidence_not_found"
 
 
+def test_identity_source_evidence_returns_accepted_row_and_full_page(client):
+    raw_record_id = "raw-eu-2025-1175-entry-17380"
+    crop = client.get(f"/identity-source-evidence/{raw_record_id}")
+    page = client.get(f"/identity-source-evidence/{raw_record_id}/page")
+
+    assert crop.status_code == 200
+    assert crop.headers["content-type"] == "image/png"
+    assert crop.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert crop.headers["x-source-reference"] == "17380"
+    assert crop.headers["x-source-pages"] == "516"
+    assert crop.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert page.status_code == 200
+    assert page.headers["x-render-mode"] == "page"
+    assert len(page.content) > len(crop.content)
+
+    cached = client.get(
+        f"/identity-source-evidence/{raw_record_id}/page",
+        headers={"If-None-Match": page.headers["etag"]},
+    )
+    assert cached.status_code == 304
+    assert cached.content == b""
+
+
+def test_identity_source_evidence_uses_only_trusted_catalogue_coordinates(client):
+    raw_record_id = "raw-eu-2025-1175-entry-17380"
+    accepted = client.get(f"/identity-source-evidence/{raw_record_id}")
+    supplied = client.get(
+        f"/identity-source-evidence/{raw_record_id}",
+        params={"path": "C:/Windows/system.ini", "page": 1, "bbox": "0,0,1,1"},
+    )
+
+    assert supplied.status_code == 200
+    assert supplied.headers["etag"] == accepted.headers["etag"]
+    assert supplied.content == accepted.content
+
+
+def test_identity_source_evidence_unknown_record_fails_safely(client):
+    response = client.get("/identity-source-evidence/not-an-accepted-record")
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "identity_source_evidence_not_found"
+
+
 def test_client_coordinates_and_paths_cannot_change_source_render(client):
     raw_record_id = "raw-singapore_regulations_2025_12_01-third-schedule-part-i-a1136"
     accepted = client.get(f"/source-evidence/{raw_record_id}")
@@ -425,18 +499,17 @@ def test_source_hash_mismatch_fails_only_evidence_route(store):
     assert screening_response.status_code == 200
 
 
-def test_simple_diethylene_glycol_is_catalogue_recognised_but_linkage_unresolved(client):
+def test_simple_diethylene_glycol_uses_literal_source_backed_regulatory_alias(client):
     response = client.post(
         "/screen-formulation", json={"ingredients": [{"name": "Diethylene glycol"}]}
     )
     assert response.status_code == 200
     result = response.json()["ingredient_results"][0]
     assert result["primary_finding"] == "professional_review_required"
-    assert result["identity"]["identity_source_type"] == "ingredient_identity_catalogue"
-    assert result["identity"]["singapore_linkage_status"] == "unresolved"
-    assert result["review_types"] == ["identity_review"]
-    assert result["review_reasons"] == ["catalogue_identity_singapore_linkage_unresolved"]
-    assert result["rule_evaluations"] == []
+    assert result["identity"]["identity_source_type"] == "singapore_regulatory_source"
+    assert "derived_source_name_except_clause" in result["identity"]["match_methods"]
+    assert result["review_types"] == ["rule_review"]
+    assert result["rule_evaluations"][0]["rule_id"] == "sg-third-schedule-i-a1140"
 
 
 def test_ingredient_search_exact_prefix_contains_and_bounds(client):
@@ -458,79 +531,30 @@ def test_ingredient_search_exact_prefix_contains_and_bounds(client):
     assert client.get("/ingredients", params={"query": "nia", "limit": 21}).status_code == 422
 
 
-def test_niacinamide_is_identity_review_not_unresolved(client):
+def test_niacinamide_is_catalogue_resolved_with_bounded_no_listing_result(client):
     result = client.post("/screen-formulation", json={"ingredients": [{"name": "Niacinamide"}]}).json()["ingredient_results"][0]
-    assert result["primary_finding"] == "professional_review_required"
+    assert result["primary_finding"] == "no_issue_identified_within_scoped_rules"
     assert result["identity"]["catalogue_identity"]["canonical_name"] == "NIACINAMIDE"
-    assert result["identity"]["singapore_linkage_status"] == "unresolved"
-    assert result["review_types"] == ["identity_review"]
-    assert result["searched_singapore_parts"] == []
+    assert result["identity"]["singapore_linkage_status"] == "not_applicable"
+    assert result["review_required"] is False
+    assert result["review_types"] == []
+    assert result["searched_regulatory_sections"] == [
+        "Third Schedule Part I",
+        "Third Schedule Part II",
+        "Annex II Part 1",
+        "Annex III Part 1",
+    ]
+    assert result["rule_evaluations"] == []
 
 
-@pytest.mark.parametrize("name", ["Aqua", "Diethylene glycol"])
-def test_unreviewed_pilot_catalogue_identities_remain_linkage_reviews(client, name):
-    result = client.post(
-        "/screen-formulation", json={"ingredients": [{"name": name}]}
-    ).json()["ingredient_results"][0]
-    assert result["primary_finding"] == "professional_review_required"
-    assert result["identity"]["identity_source_type"] == "ingredient_identity_catalogue"
-    assert result["identity"]["singapore_linkage_status"] == "unresolved"
-    assert result["review_types"] == ["identity_review"]
-    assert result["review_reasons"] == ["catalogue_identity_singapore_linkage_unresolved"]
-
-
-def test_formulation_response_identifies_the_independent_empty_linkage_baseline(client):
+def test_formulation_response_marks_historical_linkage_layer_inactive(client):
     payload = client.post(
         "/screen-formulation", json={"ingredients": [{"name": "Niacinamide"}]}
     ).json()
     linkage = payload["dataset"]["identity_linkage"]
-    assert linkage["available"] is True
-    assert linkage["dataset_version"] == "eu-sg-linkage__eu-glossary-2025-1175__sg-2025-12-01"
-    assert linkage["accepted_records"] == 0
-    assert linkage["screened_scope"] == ["Third Schedule Part I", "Third Schedule Part II"]
-
-
-def test_api_returns_linkage_provenance_for_reviewed_scoped_absence(store):
-    catalogue = load_accepted_ingredient_catalog(ROOT)
-    current = load_accepted_ingredient_linkages(ROOT)
-    review_input = {
-        "identity_dataset_version": catalogue.dataset_version,
-        "identity_dataset_hash": catalogue.baseline_manifest_hash,
-        "singapore_regulatory_baseline": "sg-2025-12-01",
-        "singapore_regulatory_baseline_hash": store.baseline_manifest_hash,
-        "screened_scope": ["Third Schedule Part I", "Third Schedule Part II"],
-        "decisions": [{
-            "catalogue_ingredient_id": "eu-2025-1175-entry-17380",
-            "catalogue_canonical_name": "NIACINAMIDE",
-            "status": "verified_not_represented",
-            "singapore_raw_record_ids": [],
-            "review": {
-                "reviewed": True,
-                "reviewed_at": "2026-09-16",
-                "reviewer": "Test reviewer",
-                "review_basis": "Compared with accepted Third Schedule Parts I and II.",
-                "notes": "Synthetic API test.",
-            },
-        }],
-    }
-    accepted = validate_review_input(review_input, ROOT)
-    linkage = replace(
-        current,
-        counts=accepted["counts"],
-        records_by_catalogue_id={
-            item["catalogue_ingredient_id"]: item for item in accepted["records"]
-        },
-    )
-    with TestClient(create_app(lambda: store, lambda: catalogue, lambda: linkage)) as linked_client:
-        response = linked_client.post(
-            "/screen-formulation", json={"ingredients": [{"name": "Niacinamide"}]}
-        )
-    assert response.status_code == 200
-    result = response.json()["ingredient_results"][0]
-    assert result["primary_finding"] == "no_issue_identified_within_scoped_rules"
-    assert result["identity"]["singapore_linkage_status"] == "verified_not_represented"
-    assert result["identity"]["linkage_evidence"]["linkage_id"].startswith("eu-sg-link-")
-    assert "does not establish general Singapore permission" in result["scope_note"]
+    assert linkage["available"] is False
+    assert linkage["dataset_version"] is None
+    assert linkage["screened_scope"] == []
 
 
 def test_regulatory_identity_precedes_catalogue(client):
@@ -559,25 +583,28 @@ def test_catalogue_failure_does_not_disable_existing_regulatory_screening(store)
     assert unknown_result["review_types"] == ["identity_review"]
 
 
-def test_linkage_failure_does_not_disable_regulatory_or_catalogue_services(store):
-    catalogue = load_accepted_ingredient_catalog(ROOT)
+def test_acd_regulatory_search_exact_prefix_contains_and_limits(client):
+    exact = client.get("/acd-ingredients", params={"query": "hydroquinone", "limit": 2})
+    assert exact.status_code == 200
+    exact_results = exact.json()["results"]
+    assert len(exact_results) == 2
+    assert exact_results[0]["name"].casefold().startswith("hydroquinone")
+    assert set(exact_results[0]) >= {
+        "rule_id", "name", "annex", "reference", "cas_numbers", "source_pages",
+        "raw_record_id", "source_version", "source_url", "manual_review_required",
+    }
+    assert "allowed" not in exact_results[0]
+    assert "regulatory_status" not in exact_results[0]
+    crop = client.get(f"/source-evidence/{exact_results[0]['raw_record_id']}")
+    assert crop.status_code == 200
+    assert crop.headers["content-type"] == "image/png"
 
-    def unavailable_linkage():
-        raise AcceptedIngredientLinkageError("linkage hash mismatch")
-
-    with TestClient(
-        create_app(lambda: store, lambda: catalogue, unavailable_linkage)
-    ) as unavailable_client:
-        search = unavailable_client.get("/ingredients", params={"query": "nia"})
-        aminophylline = unavailable_client.post(
-            "/screen-formulation", json={"ingredients": [{"name": "Aminophylline"}]}
-        )
-        niacinamide = unavailable_client.post(
-            "/screen-formulation", json={"ingredients": [{"name": "Niacinamide"}]}
-        )
-    assert search.status_code == 200
-    assert aminophylline.json()["ingredient_results"][0]["primary_finding"] == "prohibited_substance_identified"
-    result = niacinamide.json()["ingredient_results"][0]
-    assert result["primary_finding"] == "professional_review_required"
-    assert result["review_reasons"] == ["ingredient_linkage_baseline_unavailable"]
-    assert niacinamide.json()["dataset"]["identity_linkage"]["available"] is False
+    prefix = client.get("/acd-ingredients", params={"query": "hydro", "limit": 20})
+    assert prefix.status_code == 200
+    assert prefix.json()["results"]
+    contains = client.get("/acd-ingredients", params={"query": "quinone", "limit": 20})
+    assert contains.status_code == 200
+    assert contains.json()["results"]
+    assert client.get("/acd-ingredients", params={"query": "x"}).status_code == 422
+    assert client.get("/acd-ingredients", params={"query": "  "}).status_code == 422
+    assert client.get("/acd-ingredients", params={"query": "hydro", "limit": 21}).status_code == 422

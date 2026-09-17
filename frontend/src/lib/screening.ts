@@ -17,7 +17,7 @@ export const findingPresentation: Record<Finding, { label: string; tone: string;
     dot: "bg-emerald-600",
   },
   professional_review_required: {
-    label: "Professional review required",
+    label: "Needs human review",
     tone: "text-amber-800 bg-amber-50 border-amber-200",
     dot: "bg-amber-500",
   },
