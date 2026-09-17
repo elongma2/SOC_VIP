@@ -23,3 +23,6 @@ frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
 frontend/verification-*.png
+AGENTS.MD
+STATUS.MD
+VIP_SoC_Cosmetics_MVP_Scope.md
