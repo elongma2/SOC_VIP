@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.config import OpenAISettings
 from backend.app.main import create_app as build_app
-from backend.app.models.agent import AgentAnswer, AgentAnswersRequest, AgentModelRun, AgentPrepareRequest, ModelInterpretation
+from backend.app.models.agent import AgentAnswer, AgentAnswersRequest, AgentModelRun, AgentPrepareRequest, AgentRowUpdate, ModelInterpretation
 from backend.app.models.openai import OpenAIUsage
 from backend.app.services.agent_csv import CSVUploadError, parse_csv_upload
 from backend.app.services.formulation_agent import (
@@ -225,6 +225,41 @@ def test_qs_and_missing_unit_create_targeted_questions(store, catalogue):
         "unit", "preparation_stage", "product_context", "non_numeric_concentration",
     }
     assert session.interpreted_rows[1].concentration is None
+    unit_question = next(question for question in session.questions if question.question_type == "unit")
+    assert unit_question.row_id == session.interpreted_rows[0].row_id
+    assert unit_question.target_field == "concentration.unit"
+    assert unit_question.uncertainty_code == "missing_concentration_unit"
+    assert unit_question.prompt == 'The CSV gives concentration "5" but no unit.'
+    nonnumeric = next(question for question in session.questions if question.question_type == "non_numeric_concentration")
+    assert nonnumeric.row_id == session.interpreted_rows[1].row_id
+    assert nonnumeric.prompt == '"QS" cannot be converted safely to a numeric concentration.'
+
+
+def test_direct_unit_edit_resolves_only_that_row_question(store, catalogue):
+    def runner(parsed, accepted_store, accepted_catalogue, model):
+        return interpretation([
+            {"source_row": 2, "source_name": "NIACINAMIDE", "interpreted_name": "NIACINAMIDE", "identity_status": "exact_match", "source_cas": None, "source_concentration": "5", "concentration_value": 5, "concentration_unit": None, "issues": ["unit_not_explicit"]},
+            {"source_row": 3, "source_name": "GLYCERIN", "interpreted_name": "GLYCERIN", "identity_status": "exact_match", "source_cas": None, "source_concentration": "4", "concentration_value": 4, "concentration_unit": None, "issues": ["unit_not_explicit"]},
+        ])
+
+    service = FormulationAgentService(store, catalogue, model_runner=runner)
+    session = service.create(parse_csv_upload("units.csv", b"INCI,Amount\nNIACINAMIDE,5\nGLYCERIN,4\n"))
+    first = session.interpreted_rows[0]
+    updated = service.apply_answers(session.session_id, AgentAnswersRequest(
+        revision=session.revision,
+        row_updates=[AgentRowUpdate(
+            row_id=first.row_id,
+            concentration_value=5,
+            concentration_unit="percent",
+            concentration_basis=None,
+            preparation_stage=None,
+        )],
+    ))
+
+    unit_questions = [question for question in updated.questions if question.question_type == "unit"]
+    assert len(unit_questions) == 1
+    assert unit_questions[0].source_row == 3
+    assert not any(item.uncertainty_code == "missing_concentration_unit" for item in updated.interpreted_rows[0].unresolved_fields)
 
 
 def test_non_exact_identity_requires_confirmation(store, catalogue):
@@ -238,6 +273,46 @@ def test_non_exact_identity_requires_confirmation(store, catalogue):
     assert session.interpreted_rows[0].name.source_value == "Tosyl chl Na"
     assert session.interpreted_rows[0].name.needs_confirmation is True
     assert any(question.question_type == "identity" for question in session.questions)
+
+
+def test_unchanged_unmatched_identity_has_no_fake_recommendation(store, catalogue):
+    def unresolved_runner(parsed, accepted_store, accepted_catalogue, model):
+        return interpretation([{
+            "source_row": 2, "source_name": "Mystery Extract", "interpreted_name": "Mystery Extract",
+            "identity_status": "candidate", "source_cas": None, "source_concentration": None,
+            "concentration_value": None, "concentration_unit": None, "issues": [],
+        }])
+
+    session = FormulationAgentService(store, catalogue, model_runner=unresolved_runner).create(
+        parse_csv_upload("mystery.csv", b"INCI,Amount\nMystery Extract,\n")
+    )
+    question = next(question for question in session.questions if question.question_type == "identity")
+    assert question.prompt == "Regulens could not find a source-backed identity match."
+    assert [option.option_id for option in question.options] == ["keep_source"]
+    assert all("Confirm Mystery Extract" not in option.label for option in question.options)
+
+
+def test_direct_exact_identity_edit_resolves_identity_question(store, catalogue):
+    def candidate_runner(parsed, accepted_store, accepted_catalogue, model):
+        return interpretation([{
+            "source_row": 2, "source_name": "Glycerine", "interpreted_name": "Glycerine",
+            "identity_status": "candidate", "source_cas": None, "source_concentration": None,
+            "concentration_value": None, "concentration_unit": None, "issues": [],
+        }])
+
+    service = FormulationAgentService(store, catalogue, model_runner=candidate_runner)
+    session = service.create(parse_csv_upload("identity.csv", b"INCI,Amount\nGlycerine,\n"))
+    row = session.interpreted_rows[0]
+    assert any(question.question_type == "identity" for question in session.questions)
+
+    updated = service.apply_answers(session.session_id, AgentAnswersRequest(
+        revision=session.revision,
+        row_updates=[AgentRowUpdate(row_id=row.row_id, name="GLYCERIN")],
+    ))
+
+    assert updated.interpreted_rows[0].name.value == "GLYCERIN"
+    assert updated.interpreted_rows[0].identity_status == "confirmed"
+    assert not any(question.question_type == "identity" for question in updated.questions)
 
 
 def test_optional_source_metadata_is_preserved_and_inci_is_the_identity_field(store, catalogue):
@@ -486,6 +561,46 @@ def test_semantic_reference_failure_gets_one_bounded_repair(store, catalogue):
     assert session.interpreted_rows[0].name.value == "NIACINAMIDE"
 
 
+def test_source_reference_failure_after_repair_retries_full_interpretation(store, catalogue):
+    valid = interpretation([{
+        "source_row": 2, "source_name": "NIACINAMIDE", "interpreted_name": "NIACINAMIDE",
+        "identity_status": "exact_match", "source_cas": None, "source_concentration": "5%",
+        "concentration_value": 5, "concentration_unit": "percent", "issues": [],
+    }])
+    invalid = valid.model_copy(deep=True)
+    invalid.ingredients[0].name_sources[0].source_value = "CHANGED"
+
+    class RetryAfterRepairInterpreter(OpenAIFormulationInterpreter):
+        def __init__(self):
+            super().__init__(api_key="test")
+            self.calls = 0
+
+        def __call__(self, *args):
+            self.calls += 1
+            output = invalid if self.calls == 1 else valid
+            return AgentModelRun(
+                interpretation=output,
+                usage=OpenAIUsage(configured_model="gpt-5.6-sol", input_tokens=10, total_tokens=10),
+            )
+
+        def repair(self, *args):
+            return AgentModelRun(
+                interpretation=invalid,
+                usage=OpenAIUsage(configured_model="gpt-5.6-sol", input_tokens=5, total_tokens=5),
+            )
+
+    interpreter = RetryAfterRepairInterpreter()
+    session = FormulationAgentService(
+        store, catalogue, model_runner=interpreter, sleep=lambda _: None,
+    ).create(parse_csv_upload("repair-retry.csv", b"INCI,Concentration\nNIACINAMIDE,5%\n"))
+
+    assert session.state == "needs_confirmation"
+    assert session.attempts == 2
+    assert session.successful_attempt == 2
+    assert session.attempt_diagnostics[0].failure_category == "source_reference"
+    assert session.total_usage.input_tokens == 25
+
+
 def test_model_failure_retains_recoverable_session(store, catalogue):
     def failed_runner(*args):
         raise AgentExecutionError("agent_model_unavailable", "Model unavailable")
@@ -495,6 +610,148 @@ def test_model_failure_retains_recoverable_session(store, catalogue):
     assert session.state == "failed"
     assert session.error.recoverable is True
     assert session.filename == "clean.csv"
+    assert session.attempts == 1
+
+
+def test_transient_schema_failure_retries_and_aggregates_usage(store, catalogue):
+    valid = interpretation([{
+        "source_row": 2, "source_name": "NIACINAMIDE", "interpreted_name": "NIACINAMIDE",
+        "identity_status": "exact_match", "source_cas": None, "source_concentration": "5%",
+        "concentration_value": 5, "concentration_unit": "percent", "issues": [],
+    }])
+
+    class FlakyRunner:
+        calls = 0
+
+        def __call__(self, *args):
+            self.calls += 1
+            usage = OpenAIUsage(
+                configured_model="gpt-5.6-sol", actual_model="gpt-5.6-sol",
+                input_tokens=100 * self.calls, output_tokens=10 * self.calls,
+                total_tokens=110 * self.calls, request_rounds=1,
+                response_ids=[f"resp-{self.calls}"],
+            )
+            if self.calls == 1:
+                raise AgentExecutionError(
+                    "agent_invalid_structured_output", "invalid schema", transient=True,
+                    failure_category="structured_output", usage=usage,
+                )
+            return AgentModelRun(interpretation=valid, usage=usage)
+
+    runner = FlakyRunner()
+    delays = []
+    session = FormulationAgentService(
+        store, catalogue, model_runner=runner, sleep=delays.append,
+    ).create(parse_csv_upload("retry.csv", b"INCI,Concentration\nNIACINAMIDE,5%\n"))
+
+    assert session.state == "needs_confirmation"
+    assert session.attempts == 2
+    assert session.successful_attempt == 2
+    assert [item.status for item in session.attempt_diagnostics] == ["failure", "success"]
+    assert session.total_usage.input_tokens == 300
+    assert session.total_usage.output_tokens == 30
+    assert session.total_usage.response_ids == ["resp-1", "resp-2"]
+    assert session.usage == session.total_usage
+    assert delays == [0.5]
+
+
+def test_transient_timeout_retries_transparently(store, catalogue):
+    valid = interpretation([{
+        "source_row": 2, "source_name": "NIACINAMIDE", "interpreted_name": "NIACINAMIDE",
+        "identity_status": "exact_match", "source_cas": None, "source_concentration": None,
+        "concentration_value": None, "concentration_unit": None, "issues": [],
+    }])
+    calls = 0
+
+    def runner(*args):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise AgentExecutionError(
+                "agent_model_unavailable", "timeout", transient=True,
+                failure_category="timeout", usage=OpenAIUsage(configured_model="gpt-5.6-sol"),
+            )
+        return valid
+
+    session = FormulationAgentService(store, catalogue, model_runner=runner, sleep=lambda _: None).create(
+        parse_csv_upload("timeout.csv", b"INCI,Concentration\nNIACINAMIDE,\n")
+    )
+    assert session.state == "needs_confirmation"
+    assert session.attempts == 2
+    assert session.attempt_diagnostics[0].failure_category == "timeout"
+    assert all(item.message != "Interpretation could not be completed" for item in session.activity)
+
+
+def test_three_transient_failures_then_manual_retry_reuses_session_history(store, catalogue):
+    valid = interpretation([{
+        "source_row": 2, "source_name": "NIACINAMIDE", "interpreted_name": "NIACINAMIDE",
+        "identity_status": "exact_match", "source_cas": None, "source_concentration": None,
+        "concentration_value": None, "concentration_unit": None, "issues": [],
+    }])
+    parsed_objects = []
+
+    def runner(parsed, *args):
+        parsed_objects.append(parsed)
+        attempt = len(parsed_objects)
+        usage = OpenAIUsage(configured_model="gpt-5.6-sol", input_tokens=10, total_tokens=10)
+        if attempt <= 3:
+            raise AgentExecutionError(
+                "agent_model_unavailable", "temporary", transient=True,
+                failure_category="temporary_api", usage=usage,
+            )
+        return AgentModelRun(interpretation=valid, usage=usage)
+
+    service = FormulationAgentService(store, catalogue, model_runner=runner, sleep=lambda _: None)
+    failed = service.create(parse_csv_upload("retained.csv", b"INCI,Concentration\nNIACINAMIDE,\n"))
+    assert failed.state == "failed"
+    assert failed.attempts == 3
+    assert failed.error.recoverable is True
+    assert failed.error.message == "Regulens tried to interpret this formulation but could not produce a reliable structured result. Your uploaded file has been preserved."
+
+    recovered = service.retry(failed.session_id)
+    assert recovered.state == "needs_confirmation"
+    assert recovered.attempts == 4
+    assert recovered.successful_attempt == 4
+    assert len({id(item) for item in parsed_objects}) == 1
+    assert recovered.total_usage.input_tokens == 40
+
+
+def test_successful_ambiguity_is_not_retried(store, catalogue):
+    ambiguous = interpretation([{
+        "source_row": 2, "source_name": "Mystery Extract", "interpreted_name": "Mystery Extract",
+        "identity_status": "candidate", "source_cas": None, "source_concentration": None,
+        "concentration_value": None, "concentration_unit": None, "issues": [],
+    }])
+    calls = 0
+
+    def runner(*args):
+        nonlocal calls
+        calls += 1
+        return ambiguous
+
+    session = FormulationAgentService(store, catalogue, model_runner=runner, sleep=lambda _: None).create(
+        parse_csv_upload("ambiguous.csv", b"INCI,Concentration\nMystery Extract,\n")
+    )
+    assert session.state == "needs_confirmation"
+    assert calls == 1
+    assert session.attempts == 1
+    assert any(question.question_type == "identity" for question in session.questions)
+
+
+def test_malformed_upload_never_reaches_interpreter(store, catalogue):
+    calls = 0
+
+    def runner(*args):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("model must not run")
+
+    service = FormulationAgentService(store, catalogue, model_runner=runner, sleep=lambda _: None)
+    app = create_app(formulation_agent_factory=lambda *_: service)
+    with TestClient(app) as client:
+        response = client.post("/agent/formulations", files={"file": ("bad.csv", b"\xff\xfe\x00", "text/csv")})
+    assert response.status_code == 422
+    assert calls == 0
 
 
 def test_openai_tools_are_strict_read_only_and_never_screen(store, catalogue):
@@ -514,6 +771,7 @@ def test_openai_tools_are_strict_read_only_and_never_screen(store, catalogue):
 
 def test_responses_api_is_stateless_bounded_and_sends_parsed_cells_only(monkeypatch, store, catalogue):
     calls = []
+    client_kwargs = {}
     tool_call = SimpleNamespace(
         type="function_call",
         name="search_ingredient_catalogue",
@@ -532,12 +790,16 @@ def test_responses_api_is_stateless_bounded_and_sends_parsed_cells_only(monkeypa
         def create(self, **kwargs):
             calls.append(kwargs)
             if len(calls) == 1:
-                return SimpleNamespace(output=[tool_call], output_text="")
-            return SimpleNamespace(output=[], output_text=final_output)
+                return SimpleNamespace(id="resp-tool", model="gpt-5.6-sol", usage=SimpleNamespace(input_tokens=20, output_tokens=5, total_tokens=25), output=[tool_call], output_text="")
+            return SimpleNamespace(id="resp-final", model="gpt-5.6-sol", usage=SimpleNamespace(input_tokens=30, output_tokens=10, total_tokens=40), output=[], output_text=final_output)
+
+    def fake_openai(**kwargs):
+        client_kwargs.update(kwargs)
+        return SimpleNamespace(responses=FakeResponses())
 
     monkeypatch.setattr(
         "backend.app.services.formulation_agent.OpenAI",
-        lambda **kwargs: SimpleNamespace(responses=FakeResponses()),
+        fake_openai,
     )
     parsed = parse_csv_upload("private-name.csv", b"INCI,Concentration\nNIACINAMIDE,5%\n")
     output = OpenAIFormulationInterpreter(api_key="test")(parsed, store, catalogue, "gpt-5.6-sol")
@@ -551,6 +813,10 @@ def test_responses_api_is_stateless_bounded_and_sends_parsed_cells_only(monkeypa
     assert any(item.get("type") == "function_call_output" for item in calls[1]["input"])
     continued_call = next(item for item in calls[1]["input"] if item.get("type") == "function_call")
     assert "status" not in continued_call
+    assert client_kwargs["max_retries"] == 0
+    assert client_kwargs["timeout"] == 180
+    assert output.usage.response_ids == ["resp-tool", "resp-final"]
+    assert output.usage.input_tokens == 50
 
 
 def test_tool_round_limit_forces_a_final_structured_response_without_more_tools(monkeypatch, store, catalogue):

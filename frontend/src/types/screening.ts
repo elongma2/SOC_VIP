@@ -255,6 +255,7 @@ export interface OpenAIUsage {
   tool_calls: number;
   request_rounds: number;
   cache_hits: number;
+  response_ids: string[];
 }
 
 export interface IngredientResult {

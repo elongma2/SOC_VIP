@@ -65,7 +65,7 @@ describe("evidence presentation", () => {
       "The percentage is for a different preparation stage. Check when this concentration applies.",
     );
     expect(reviewReasonLabel("conditional_prohibition_wording_not_structured")).toBe(
-      "This prohibition has an exception or condition that a person needs to check.",
+      "This rule has an exception that still needs checking.",
     );
   });
 });

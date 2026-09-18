@@ -1,6 +1,6 @@
 import { Bot, FileText, FlaskConical } from "lucide-react";
 import type { AppView } from "../App";
-import { RegulensMark } from "./RegulensMark";
+import regulensLogoMark from "../assets/regulens-logo-mark.png";
 
 const items = [
   { label: "New Screen", icon: FlaskConical, view: "screen" as const },
@@ -17,16 +17,16 @@ export function Sidebar({
 }) {
   return (
     <aside className="sidebar-shell">
-      <div className="flex items-center gap-3 px-5 py-6">
+      <div className="sidebar-brand">
         <div className="brand-mark">
-          <RegulensMark size={34} />
+          <img src={regulensLogoMark} alt="Regulens logo" />
         </div>
-        <div>
+        <div className="sidebar-brand-copy">
           <div className="font-semibold tracking-tight text-slate-950">Regulens</div>
           <div className="text-[11px] text-slate-500">Regulatory Intelligence</div>
         </div>
       </div>
-      <div className="mx-5 border-t border-slate-200" />
+      <div className="sidebar-divider" />
       <nav className="flex flex-1 flex-col px-3 pt-4" aria-label="Primary navigation">
         <div className="space-y-1">
           {items.map(({ label, icon: Icon, view }) => {

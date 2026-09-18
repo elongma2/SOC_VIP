@@ -10,13 +10,19 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    OpenAI,
+)
 from pydantic import ValidationError
 
 from data_pipeline.identity.eu_common_ingredient_glossary.scripts.pipeline import search_name
 
 from backend.app.models.agent import (
     AgentActivityItem,
+    AgentAttemptDiagnostic,
     AgentAnswersRequest,
     AgentColumnMapping,
     AgentConcentration,
@@ -29,6 +35,7 @@ from backend.app.models.agent import (
     AgentPreparedFormulation,
     AgentQuestion,
     AgentQuestionOption,
+    AgentRowUncertainty,
     AgentModelRun,
     AgentSourceReference,
     AgentSourceMetadata,
@@ -57,6 +64,8 @@ SESSION_TTL_SECONDS = 60 * 60
 MAX_SESSIONS = 100
 MAX_TOOL_CALLS = 12
 MAX_TOOL_ROUNDS = 5
+MAX_INTERPRETATION_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = (0.5, 1.0)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -77,9 +86,20 @@ class AgentConfirmationRequiredError(ValueError):
 
 
 class AgentExecutionError(RuntimeError):
-    def __init__(self, code: str, message: str):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        transient: bool = False,
+        failure_category: str | None = None,
+        usage: OpenAIUsage | None = None,
+    ):
         super().__init__(message)
         self.code = code
+        self.transient = transient
+        self.failure_category = failure_category or code
+        self.usage = usage
 
 
 @dataclass
@@ -104,7 +124,7 @@ def _rule_tool_result(rule: dict[str, Any]) -> dict[str, Any]:
 
 
 class OpenAIFormulationInterpreter:
-    def __init__(self, api_key: str | None = None, timeout_seconds: float = 45):
+    def __init__(self, api_key: str | None = None, timeout_seconds: float = 180):
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
 
@@ -223,7 +243,7 @@ class OpenAIFormulationInterpreter:
                 "agent_not_configured",
                 "The formulation agent is not configured. Set OPENAI_API_KEY and retry.",
             )
-        client = OpenAI(api_key=self.api_key, timeout=self.timeout_seconds)
+        client = OpenAI(api_key=self.api_key, timeout=self.timeout_seconds, max_retries=0)
         input_items: list[dict[str, Any]] = [{
             "role": "user",
             "content": json.dumps({
@@ -240,12 +260,51 @@ class OpenAIFormulationInterpreter:
         output_tokens = 0
         total_tokens = 0
         actual_model: str | None = None
+        response_ids: list[str] = []
         validation_attempts = 0
+
+        def usage_snapshot() -> OpenAIUsage:
+            return OpenAIUsage(
+                configured_model=model,
+                actual_model=actual_model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                tool_calls=tool_calls,
+                request_rounds=request_rounds,
+                response_ids=response_ids,
+            )
+
+        def create_response(**kwargs: Any) -> Any:
+            try:
+                return client.responses.create(**kwargs)
+            except (APITimeoutError, APIConnectionError, APIStatusError) as error:
+                request_id = getattr(error, "request_id", None)
+                if isinstance(request_id, str) and request_id and request_id not in response_ids:
+                    response_ids.append(request_id[:200])
+                if isinstance(error, APITimeoutError):
+                    category, transient = "timeout", True
+                elif isinstance(error, APIConnectionError):
+                    category, transient = "connection", True
+                else:
+                    status_code = int(getattr(error, "status_code", 0) or 0)
+                    transient = status_code in {408, 409, 429} or status_code >= 500
+                    category = "temporary_api" if transient else "api_request"
+                raise AgentExecutionError(
+                    "agent_model_unavailable",
+                    "The formulation service could not complete the model request.",
+                    transient=transient,
+                    failure_category=category,
+                    usage=usage_snapshot(),
+                ) from error
 
         def record(response: Any) -> None:
             nonlocal request_rounds, input_tokens, output_tokens, total_tokens, actual_model
             request_rounds += 1
             actual_model = getattr(response, "model", None) or actual_model
+            response_id = getattr(response, "id", None)
+            if isinstance(response_id, str) and response_id and response_id not in response_ids:
+                response_ids.append(response_id[:200])
             usage = getattr(response, "usage", None)
             if usage is not None:
                 input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
@@ -264,6 +323,7 @@ class OpenAIFormulationInterpreter:
                     total_tokens=total_tokens,
                     tool_calls=tool_calls,
                     request_rounds=request_rounds,
+                    response_ids=response_ids,
                 ),
             )
 
@@ -271,7 +331,7 @@ class OpenAIFormulationInterpreter:
             remaining_tool_calls = MAX_TOOL_CALLS - tool_calls
             if remaining_tool_calls <= 0:
                 break
-            response = client.responses.create(
+            response = create_response(
                 model=model,
                 instructions=AGENT_INSTRUCTIONS,
                 input=input_items,
@@ -298,7 +358,13 @@ class OpenAIFormulationInterpreter:
                 for call in function_calls:
                     tool_calls += 1
                     if tool_calls > MAX_TOOL_CALLS:
-                        raise AgentExecutionError("agent_tool_limit_exceeded", "The formulation agent exceeded its tool-call limit.")
+                        raise AgentExecutionError(
+                            "agent_tool_limit_exceeded",
+                            "The formulation agent exceeded its tool-call limit.",
+                            transient=True,
+                            failure_category="tool_loop_exhausted",
+                            usage=usage_snapshot(),
+                        )
                     try:
                         arguments = json.loads(call.arguments)
                         tool_result = self._run_tool(call.name, arguments, store, catalogue)
@@ -314,7 +380,13 @@ class OpenAIFormulationInterpreter:
                 return result(response)
             except (ValidationError, ValueError) as error:
                 if validation_attempts:
-                    raise AgentExecutionError("agent_invalid_structured_output", "The model returned an invalid structured interpretation.") from error
+                    raise AgentExecutionError(
+                        "agent_invalid_structured_output",
+                        "The model returned an invalid structured interpretation.",
+                        transient=True,
+                        failure_category="structured_output",
+                        usage=usage_snapshot(),
+                    ) from error
                 validation_attempts += 1
                 input_items.extend(self._continuation_items(response.output))
                 input_items.append({"role": "user", "content": f"Return the required schema. Validation error: {str(error)[:1500]}"})
@@ -327,7 +399,7 @@ class OpenAIFormulationInterpreter:
             ),
         })
         for attempt in range(2):
-            response = client.responses.create(
+            response = create_response(
                 model=model,
                 instructions=AGENT_INSTRUCTIONS,
                 input=input_items,
@@ -349,13 +421,22 @@ class OpenAIFormulationInterpreter:
                     raise AgentExecutionError(
                         "agent_invalid_structured_output",
                         "The model returned an invalid structured interpretation.",
+                        transient=True,
+                        failure_category="structured_output",
+                        usage=usage_snapshot(),
                     ) from error
                 input_items.extend(self._continuation_items(response.output))
                 input_items.append({
                     "role": "user",
                     "content": f"Return the required schema without tools. Validation error: {str(error)[:1500]}",
                 })
-        raise AgentExecutionError("agent_invalid_structured_output", "The model returned an invalid structured interpretation.")
+        raise AgentExecutionError(
+            "agent_invalid_structured_output",
+            "The model returned an invalid structured interpretation.",
+            transient=True,
+            failure_category="structured_output",
+            usage=usage_snapshot(),
+        )
 
     def repair(
         self,
@@ -366,29 +447,57 @@ class OpenAIFormulationInterpreter:
     ) -> AgentModelRun:
         if not self.api_key:
             raise error
-        response = OpenAI(api_key=self.api_key, timeout=self.timeout_seconds).responses.create(
-            model=model,
-            instructions=AGENT_INSTRUCTIONS,
-            input=[{
-                "role": "user",
-                "content": json.dumps({
-                    "parsed_rows": [
-                        {"source_row": index, "cells": list(row)}
-                        for index, row in enumerate(parsed.rows, start=1)
-                    ],
-                    "invalid_interpretation": invalid.model_dump(mode="json"),
-                    "validation_error": str(error),
-                    "instruction": "Repair only the source references and structural interpretation. Do not invent values.",
-                }, ensure_ascii=False),
-            }],
-            tools=[],
-            store=False,
-            text={"format": {
-                "type": "json_schema",
-                "name": "formulation_interpretation_repair",
-                "strict": True,
-                "schema": ModelInterpretation.model_json_schema(),
-            }},
+        try:
+            response = OpenAI(api_key=self.api_key, timeout=self.timeout_seconds, max_retries=0).responses.create(
+                model=model,
+                instructions=AGENT_INSTRUCTIONS,
+                input=[{
+                    "role": "user",
+                    "content": json.dumps({
+                        "parsed_rows": [
+                            {"source_row": index, "cells": list(row)}
+                            for index, row in enumerate(parsed.rows, start=1)
+                        ],
+                        "invalid_interpretation": invalid.model_dump(mode="json"),
+                        "validation_error": str(error),
+                        "instruction": "Repair only the source references and structural interpretation. Do not invent values.",
+                    }, ensure_ascii=False),
+                }],
+                tools=[],
+                store=False,
+                text={"format": {
+                    "type": "json_schema",
+                    "name": "formulation_interpretation_repair",
+                    "strict": True,
+                    "schema": ModelInterpretation.model_json_schema(),
+                }},
+            )
+        except (APITimeoutError, APIConnectionError, APIStatusError) as api_error:
+            status_code = int(getattr(api_error, "status_code", 0) or 0)
+            transient = isinstance(api_error, (APITimeoutError, APIConnectionError)) or status_code in {408, 409, 429} or status_code >= 500
+            category = "timeout" if isinstance(api_error, APITimeoutError) else "connection" if isinstance(api_error, APIConnectionError) else "temporary_api" if transient else "api_request"
+            request_id = getattr(api_error, "request_id", None)
+            raise AgentExecutionError(
+                "agent_model_unavailable",
+                "The formulation service could not complete the repair request.",
+                transient=transient,
+                failure_category=category,
+                usage=OpenAIUsage(
+                    configured_model=model,
+                    request_rounds=1,
+                    response_ids=[request_id[:200]] if isinstance(request_id, str) and request_id else [],
+                ),
+            ) from api_error
+        raw_usage = getattr(response, "usage", None)
+        response_id = getattr(response, "id", None)
+        repair_usage = OpenAIUsage(
+            configured_model=model,
+            actual_model=getattr(response, "model", None),
+            input_tokens=int(getattr(raw_usage, "input_tokens", 0) or 0),
+            output_tokens=int(getattr(raw_usage, "output_tokens", 0) or 0),
+            total_tokens=int(getattr(raw_usage, "total_tokens", 0) or 0),
+            request_rounds=1,
+            response_ids=[response_id[:200]] if isinstance(response_id, str) and response_id else [],
         )
         try:
             interpretation = ModelInterpretation.model_validate_json(response.output_text)
@@ -396,18 +505,13 @@ class OpenAIFormulationInterpreter:
             raise AgentExecutionError(
                 "agent_invalid_structured_output",
                 "The model could not repair its source references.",
+                transient=True,
+                failure_category="source_reference",
+                usage=repair_usage,
             ) from validation_error
-        usage = getattr(response, "usage", None)
         return AgentModelRun(
             interpretation=interpretation,
-            usage=OpenAIUsage(
-                configured_model=model,
-                actual_model=getattr(response, "model", None),
-                input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
-                output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
-                total_tokens=int(getattr(usage, "total_tokens", 0) or 0),
-                request_rounds=1,
-            ),
+            usage=repair_usage,
         )
 
 
@@ -418,11 +522,15 @@ class FormulationAgentService:
         catalogue: IngredientCatalog | None,
         model_runner: ModelRunner | None = None,
         model: str | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        retry_backoff_seconds: tuple[float, ...] = RETRY_BACKOFF_SECONDS,
     ):
         self.store = store
         self.catalogue = catalogue
         self.model = model or "gpt-5.6-sol"
         self.model_runner = model_runner or OpenAIFormulationInterpreter()
+        self.sleep = sleep
+        self.retry_backoff_seconds = retry_backoff_seconds
         self._sessions: dict[str, _Session] = {}
         self._lock = threading.RLock()
 
@@ -490,13 +598,57 @@ class FormulationAgentService:
             session = self._get(session_id)
             session.view.state = AgentSessionState.PARSING
             session.view.error = None
+            session.view.successful_attempt = None
+            session.view.activity = [item for item in session.view.activity if item.message != "Interpretation could not be completed"]
             session.view.revision += 1
         return self._interpret(session)
 
     def get(self, session_id: str) -> AgentSessionView:
         return self._get(session_id).view.model_copy(deep=True)
 
-    def _interpret(self, session: _Session) -> AgentSessionView:
+    @staticmethod
+    def _merge_usage(total: OpenAIUsage | None, addition: OpenAIUsage | None, configured_model: str) -> OpenAIUsage:
+        merged = total.model_copy(deep=True) if total is not None else OpenAIUsage(configured_model=configured_model)
+        if addition is None:
+            return merged
+        merged.actual_model = addition.actual_model or merged.actual_model
+        merged.input_tokens += addition.input_tokens
+        merged.output_tokens += addition.output_tokens
+        merged.total_tokens += addition.total_tokens
+        merged.tool_calls += addition.tool_calls
+        merged.request_rounds += addition.request_rounds
+        merged.cache_hits += addition.cache_hits
+        merged.response_ids = list(dict.fromkeys([*merged.response_ids, *addition.response_ids]))
+        return merged
+
+    def _record_attempt(
+        self,
+        session: _Session,
+        attempt_number: int,
+        status: str,
+        usage: OpenAIUsage | None,
+        failure_category: str | None = None,
+    ) -> None:
+        safe_usage = usage or OpenAIUsage(configured_model=self.model)
+        session.view.attempts = attempt_number
+        session.view.attempt_diagnostics.append(AgentAttemptDiagnostic(
+            attempt_number=attempt_number,
+            status=status,
+            failure_category=failure_category,
+            configured_model=safe_usage.configured_model,
+            actual_model=safe_usage.actual_model,
+            response_ids=safe_usage.response_ids,
+            input_tokens=safe_usage.input_tokens,
+            output_tokens=safe_usage.output_tokens,
+            total_tokens=safe_usage.total_tokens,
+            tool_calls=safe_usage.tool_calls,
+            request_rounds=safe_usage.request_rounds,
+        ))
+        session.view.total_usage = self._merge_usage(session.view.total_usage, safe_usage, self.model)
+        session.view.usage = session.view.total_usage.model_copy(deep=True)
+
+    def _run_interpretation_attempt(self, session: _Session) -> OpenAIUsage:
+        original_view = session.view.model_copy(deep=True)
         try:
             model_result = self.model_runner(session.parsed, self.store, self.catalogue, self.model)
             if isinstance(model_result, AgentModelRun):
@@ -510,37 +662,95 @@ class FormulationAgentService:
                     self._apply_model_output(session, model_output)
                 except AgentExecutionError as error:
                     if not isinstance(self.model_runner, OpenAIFormulationInterpreter):
+                        raise AgentExecutionError(
+                            error.code,
+                            str(error),
+                            transient=True,
+                            failure_category="source_reference" if error.code == "agent_invalid_source_reference" else "structured_output",
+                            usage=usage,
+                        ) from error
+                    try:
+                        repaired = self.model_runner.repair(session.parsed, model_output, error, self.model)
+                    except AgentExecutionError as repair_error:
+                        repair_error.usage = self._merge_usage(usage, repair_error.usage, self.model)
+                        repair_error.transient = True
+                        repair_error.failure_category = "source_reference" if error.code == "agent_invalid_source_reference" else repair_error.failure_category
                         raise
-                    repaired = self.model_runner.repair(session.parsed, model_output, error, self.model)
-                    self._apply_model_output(session, repaired.interpretation)
-                    usage.input_tokens += repaired.usage.input_tokens
-                    usage.output_tokens += repaired.usage.output_tokens
-                    usage.total_tokens += repaired.usage.total_tokens
-                    usage.request_rounds += repaired.usage.request_rounds
-                    usage.actual_model = repaired.usage.actual_model or usage.actual_model
-                    session.view.activity.append(self._activity("warning", "Repaired invalid source references once"))
-                session.view.usage = usage
+                    usage = self._merge_usage(usage, repaired.usage, self.model)
+                    try:
+                        self._apply_model_output(session, repaired.interpretation)
+                    except AgentExecutionError as repaired_validation_error:
+                        raise AgentExecutionError(
+                            repaired_validation_error.code,
+                            str(repaired_validation_error),
+                            transient=True,
+                            failure_category="source_reference" if repaired_validation_error.code == "agent_invalid_source_reference" else "structured_output",
+                            usage=usage,
+                        ) from repaired_validation_error
+                return usage
         except AgentExecutionError as error:
-            with self._lock:
-                session.view.state = AgentSessionState.FAILED
-                session.view.error = AgentFailure(code=error.code, message=str(error), recoverable=True)
-                session.view.activity.append(self._activity("error", "Agent interpretation did not finish"))
-                session.view.revision += 1
+            session.view = original_view
+            raise
         except Exception as error:
-            LOGGER.exception(
-                "Formulation Agent interpretation failed for session %s (%s)",
-                session.view.session_id,
-                type(error).__name__,
-            )
-            with self._lock:
-                session.view.state = AgentSessionState.FAILED
-                session.view.error = AgentFailure(
-                    code="agent_model_unavailable",
-                    message="The formulation agent could not finish interpreting this file. Your original CSV has not been changed.",
-                    recoverable=True,
+            session.view = original_view
+            raise AgentExecutionError(
+                "agent_model_response_failed",
+                "The formulation model response could not be processed.",
+                transient=True,
+                failure_category="model_response",
+                usage=OpenAIUsage(configured_model=self.model),
+            ) from error
+
+    def _interpret(self, session: _Session) -> AgentSessionView:
+        last_error: AgentExecutionError | None = None
+        for cycle_attempt in range(1, MAX_INTERPRETATION_ATTEMPTS + 1):
+            attempt_number = session.view.attempts + 1
+            try:
+                usage = self._run_interpretation_attempt(session)
+            except AgentExecutionError as error:
+                last_error = error
+                with self._lock:
+                    self._record_attempt(session, attempt_number, "failure", error.usage, error.failure_category)
+                LOGGER.warning(
+                    "Formulation Agent attempt %s failed (%s, transient=%s, model=%s)",
+                    attempt_number,
+                    error.failure_category,
+                    error.transient,
+                    error.usage.actual_model if error.usage else self.model,
                 )
-                session.view.activity.append(self._activity("error", "Agent interpretation did not finish"))
-                session.view.revision += 1
+                if not error.transient or cycle_attempt >= MAX_INTERPRETATION_ATTEMPTS:
+                    break
+                delay = self.retry_backoff_seconds[min(cycle_attempt - 1, len(self.retry_backoff_seconds) - 1)] if self.retry_backoff_seconds else 0
+                if delay > 0:
+                    self.sleep(delay)
+                continue
+            with self._lock:
+                self._record_attempt(session, attempt_number, "success", usage)
+                session.view.successful_attempt = attempt_number
+                session.view.activity.append(self._activity("complete", "Interpretation completed"))
+                LOGGER.info(
+                    "Formulation Agent attempt %s succeeded (model=%s, input_tokens=%s, output_tokens=%s, tool_calls=%s)",
+                    attempt_number,
+                    usage.actual_model or usage.configured_model,
+                    usage.input_tokens,
+                    usage.output_tokens,
+                    usage.tool_calls,
+                )
+            return session.view.model_copy(deep=True)
+
+        with self._lock:
+            session.view.state = AgentSessionState.FAILED
+            session.view.error = AgentFailure(
+                code=last_error.code if last_error else "agent_model_unavailable",
+                message=(
+                    str(last_error)
+                    if last_error is not None and not last_error.transient
+                    else "Regulens tried to interpret this formulation but could not produce a reliable structured result. Your uploaded file has been preserved."
+                ),
+                recoverable=True,
+            )
+            session.view.activity.append(self._activity("error", "Interpretation could not be completed"))
+            session.view.revision += 1
         return session.view.model_copy(deep=True)
 
     @staticmethod
@@ -577,8 +787,6 @@ class FormulationAgentService:
         ]
         covered_data_rows: set[int] = set()
         rows: list[AgentIngredientRow] = []
-        questions: list[AgentQuestion] = []
-        missing_unit_rows: list[str] = []
 
         for item in output.ingredients:
             source_rows = list(dict.fromkeys(item.source_rows))
@@ -618,28 +826,28 @@ class FormulationAgentService:
             catalogue_match = exact_source
             name_method = "exact_catalogue_match" if exact_source else "source_value_preserved"
             name_needs_confirmation = False
+            row_uncertainties: list[AgentRowUncertainty] = []
             if search_name(item.interpreted_name) != search_name(source_interpreted_name):
-                interpreted_name = item.interpreted_name.strip()
-                catalogue_match = self.catalogue.find_exact_name(interpreted_name) if self.catalogue else None
+                candidate_name = item.interpreted_name.strip()
+                candidate_match = self.catalogue.find_exact_name(candidate_name) if self.catalogue else None
+                interpreted_name = candidate_match["canonical_name"] if candidate_match else source_interpreted_name
+                catalogue_match = candidate_match
                 identity_status = AgentConfidence.NEEDS_CONFIRMATION
-                name_method = "agent_identity_candidate"
+                name_method = "agent_identity_candidate" if candidate_match else "source_value_preserved"
                 name_needs_confirmation = True
-            elif "ingredient_identity" in item.uncertainties:
+                row_uncertainties.append(AgentRowUncertainty(
+                    target_field="ingredient_name",
+                    uncertainty_code="ingredient_identity",
+                    source_value=source_name,
+                    proposed_value=interpreted_name if candidate_match else None,
+                ))
+            elif "ingredient_identity" in item.uncertainties and not exact_source:
                 identity_status = AgentConfidence.NEEDS_CONFIRMATION
                 name_needs_confirmation = True
-
-            if name_needs_confirmation:
-                questions.append(AgentQuestion(
-                    question_id=f"identity:{item.row_id}",
-                    question_type="identity",
-                    title="Ingredient identity",
-                    prompt=f'Confirm whether "{source_name}" should be interpreted as "{interpreted_name}".',
-                    source_row=source_rows[0],
-                    row_id=item.row_id,
-                    options=[
-                        AgentQuestionOption(option_id="confirm_candidate", label=f"Confirm {interpreted_name}", value=interpreted_name),
-                        AgentQuestionOption(option_id="keep_source", label="Keep source value", value=source_name),
-                    ],
+                row_uncertainties.append(AgentRowUncertainty(
+                    target_field="ingredient_name",
+                    uncertainty_code="ingredient_identity",
+                    source_value=source_name,
                 ))
 
             cas_value = None
@@ -677,19 +885,16 @@ class FormulationAgentService:
                         "source_explicit_unit" if explicit_unit else "unit_unresolved", unit_reference,
                     )
                     if explicit_unit is None:
-                        missing_unit_rows.append(item.row_id)
+                        row_uncertainties.append(AgentRowUncertainty(
+                            target_field="concentration.unit",
+                            uncertainty_code="missing_concentration_unit",
+                            source_value=raw,
+                        ))
                 elif raw.casefold() in NON_NUMERIC_CONCENTRATIONS:
-                    questions.append(AgentQuestion(
-                        question_id=f"nonnumeric:{item.row_id}",
-                        question_type="non_numeric_concentration",
-                        title="Concentration unavailable",
-                        prompt=f'"{raw}" cannot be converted safely to a numeric concentration.',
-                        source_row=source_rows[0],
-                        row_id=item.row_id,
-                        options=[
-                            AgentQuestionOption(option_id="leave_unavailable", label="Leave unavailable", value=None),
-                            AgentQuestionOption(option_id="enter_manually", label="Enter manually", value=None),
-                        ],
+                    row_uncertainties.append(AgentRowUncertainty(
+                        target_field="concentration",
+                        uncertainty_code="concentration_unavailable",
+                        source_value=raw,
                     ))
                 elif item.concentration_value is not None:
                     raise AgentExecutionError("agent_invalid_source_reference", "A numeric concentration was not present in its cited cell.")
@@ -721,6 +926,11 @@ class FormulationAgentService:
                         interpretation_method="source_explicit_stage",
                         source_references=[self._public_reference(parsed, output.header_rows, stage_reference)],
                     )
+                if concentration.preparation_stage is None:
+                    row_uncertainties.append(AgentRowUncertainty(
+                        target_field="preparation_stage",
+                        uncertainty_code="preparation_stage",
+                    ))
 
             canonical_coordinates = {(reference.source_row, reference.source_column_index) for reference in references}
             source_metadata = [
@@ -766,6 +976,7 @@ class FormulationAgentService:
                 catalogue_identity=self._catalogue_evidence(catalogue_match),
                 source_metadata=source_metadata,
                 issues=list(item.issues),
+                unresolved_fields=row_uncertainties,
             ))
 
         missing_rows = sorted(set(output.data_rows) - covered_data_rows)
@@ -775,13 +986,6 @@ class FormulationAgentService:
         session.view.formulation_id = self._metadata_provenance(parsed, output.header_rows, output.formulation_metadata.formulation_id)
         session.view.formulation_name = self._metadata_provenance(parsed, output.header_rows, output.formulation_metadata.formulation_name)
         context_provenance = self._metadata_provenance(parsed, output.header_rows, output.formulation_metadata.product_context)
-        context_options = [
-            AgentQuestionOption(option_id="not_supplied", label="Not available", value=None),
-            *[
-                AgentQuestionOption(option_id=f"context:{index}", label=value, value=value)
-                for index, value in enumerate(sorted(self.store.source_backed_contexts.values(), key=str.casefold))
-            ],
-        ]
         if context_provenance and context_provenance.value:
             accepted_context = self.store.source_backed_contexts.get(self._exact_text(str(context_provenance.value)))
             if accepted_context:
@@ -793,48 +997,11 @@ class FormulationAgentService:
                 context_provenance.needs_confirmation = True
                 context_provenance.interpretation_method = "product_context_requires_confirmation"
                 session.view.product_context = context_provenance
-                questions.append(AgentQuestion(
-                    question_id="formulation:product_context",
-                    question_type="product_context",
-                    title="Product context",
-                    prompt=f'Choose the accepted Product Context that corresponds to "{context_provenance.source_value}".',
-                    options=context_options,
-                ))
         else:
             session.view.product_context = AgentFieldProvenance(
                 value=None, source_value=None, source_row=output.header_rows[0], source_column=None,
                 interpretation_method="not_supplied", needs_confirmation=True,
             )
-            questions.append(AgentQuestion(
-                question_id="formulation:product_context",
-                question_type="product_context",
-                title="Product context",
-                prompt="No explicit Product Context was found. Select an accepted context if known, or confirm that it is unavailable.",
-                options=context_options,
-            ))
-
-        if missing_unit_rows:
-            questions.append(AgentQuestion(
-                question_id="global:concentration_unit",
-                question_type="unit",
-                title="Concentration unit",
-                prompt="Select the unit for numeric concentrations that did not include one in the CSV.",
-                options=[
-                    AgentQuestionOption(option_id=value, label=label, value=value)
-                    for value, label in (("percent", "%"), ("ppm", "ppm"), ("mg/kg", "mg/kg"), ("leave_unavailable", "Leave unavailable"))
-                ],
-            ))
-        if any(row.concentration is not None and row.concentration.preparation_stage is None for row in rows):
-            questions.append(AgentQuestion(
-                question_id="global:preparation_stage",
-                question_type="preparation_stage",
-                title="Preparation stage",
-                prompt="Confirm when the imported concentrations apply. Finished product is proposed and will not be applied until confirmed.",
-                options=[
-                    AgentQuestionOption(option_id=value, label=label, value=value)
-                    for value, label in (("finished_product", "Finished product"), ("after_mixing", "After mixing for use"), ("ready_for_use", "Ready for use"))
-                ],
-            ))
 
         session.view.detected_table = AgentDetectedTable(
             header_row=output.header_rows[0],
@@ -847,15 +1014,16 @@ class FormulationAgentService:
         )
         session.view.column_mappings = public_mappings
         session.view.interpreted_rows = rows
-        session.view.questions = questions
+        session.view.questions = []
+        self._reconcile_questions(session.view)
         session.view.canonical_formulation = None
         session.view.error = None
-        session.view.state = AgentSessionState.NEEDS_CONFIRMATION if questions else AgentSessionState.INTERPRETED
+        session.view.state = AgentSessionState.NEEDS_CONFIRMATION if session.view.questions else AgentSessionState.INTERPRETED
         session.view.activity.extend([
             self._activity("complete", f"Detected header row(s): {', '.join(map(str, output.header_rows))}"),
             self._activity("complete", f"Identified {len(output.data_rows)} formulation source row(s)"),
             self._activity("complete", f"Prepared {len(rows)} logical ingredient row(s)"),
-            self._activity("warning" if questions else "complete", f"{len(questions)} clarification question(s) remain"),
+            self._activity("warning" if session.view.questions else "complete", f"{len(session.view.questions)} clarification question(s) remain"),
         ])
         session.view.revision += 1
 
@@ -986,7 +1154,7 @@ class FormulationAgentService:
             for update in request.row_updates:
                 row = self._select_row(session.view, update.row_id, update.source_row)
                 self._apply_row_update(row, update)
-            session.view.questions = [question for question in session.view.questions if question.question_id not in answered]
+            self._reconcile_questions(session.view)
             session.view.state = AgentSessionState.NEEDS_CONFIRMATION if session.view.questions else AgentSessionState.INTERPRETED
             session.view.canonical_formulation = None
             session.view.revision += 1
@@ -1006,19 +1174,21 @@ class FormulationAgentService:
             row.identity_status = AgentConfidence.CONFIRMED if exact else AgentConfidence.UNRESOLVED
             row.identity_catalogue_id = exact["ingredient_id"] if exact else None
             row.catalogue_identity = self._catalogue_evidence(exact)
+            self._remove_uncertainty(row, "ingredient_identity")
         elif question.question_type == "unit":
-            for row in view.interpreted_rows:
-                if row.concentration and row.concentration.unit and row.concentration.unit.needs_confirmation:
-                    if option_id == "leave_unavailable":
-                        row.concentration = None
-                    else:
-                        row.concentration.unit.value = option_id
-                        row.concentration.unit.needs_confirmation = False
-                        row.concentration.unit.confirmed_by_user = True
-                        row.concentration.unit.interpretation_method = "user_confirmed_unit"
+            row = self._select_row(view, question.row_id, question.source_row)
+            if option_id == "leave_unavailable":
+                row.concentration = None
+                self._remove_uncertainty(row, "preparation_stage")
+            elif row.concentration and row.concentration.unit:
+                row.concentration.unit.value = option_id
+                row.concentration.unit.needs_confirmation = False
+                row.concentration.unit.confirmed_by_user = True
+                row.concentration.unit.interpretation_method = "user_confirmed_unit"
+            self._remove_uncertainty(row, "missing_concentration_unit")
         elif question.question_type == "preparation_stage":
             for row in view.interpreted_rows:
-                if row.concentration and row.concentration.preparation_stage is None:
+                if row.row_id in question.affected_row_ids and row.concentration and row.concentration.preparation_stage is None:
                     row.concentration.preparation_stage = AgentFieldProvenance(
                         value=option_id,
                         source_value=None,
@@ -1027,6 +1197,7 @@ class FormulationAgentService:
                         interpretation_method="user_confirmed_global_stage",
                         confirmed_by_user=True,
                     )
+                    self._remove_uncertainty(row, "preparation_stage")
         elif question.question_type == "product_context":
             selected = next(option.value for option in question.options if option.option_id == option_id)
             view.product_context = AgentFieldProvenance(
@@ -1076,6 +1247,110 @@ class FormulationAgentService:
                 )
             else:
                 row.concentration = None
+            self._remove_uncertainty(row, "concentration_unavailable")
+
+    @staticmethod
+    def _remove_uncertainty(row: AgentIngredientRow, code: str) -> None:
+        row.unresolved_fields = [item for item in row.unresolved_fields if item.uncertainty_code != code]
+
+    def _reconcile_questions(self, view: AgentSessionView) -> None:
+        questions: list[AgentQuestion] = []
+        context_options = [
+            AgentQuestionOption(option_id="not_supplied", label="Not available", value=None),
+            *[
+                AgentQuestionOption(option_id=f"context:{index}", label=value, value=value)
+                for index, value in enumerate(sorted(self.store.source_backed_contexts.values(), key=str.casefold))
+            ],
+        ]
+        if view.product_context is not None and view.product_context.needs_confirmation:
+            source_value = view.product_context.source_value
+            questions.append(AgentQuestion(
+                question_id="formulation:product_context",
+                question_type="product_context",
+                title="Product context",
+                prompt=(
+                    f'Choose the accepted Product Context that corresponds to "{source_value}".'
+                    if source_value else
+                    "No explicit Product Context was found. Select an accepted context if known, or confirm that it is unavailable."
+                ),
+                target_field="product_context",
+                uncertainty_code="product_context",
+                options=context_options,
+            ))
+
+        stage_rows: list[AgentIngredientRow] = []
+        for row in view.interpreted_rows:
+            for uncertainty in row.unresolved_fields:
+                if uncertainty.uncertainty_code == "ingredient_identity":
+                    candidate = uncertainty.proposed_value
+                    options = [AgentQuestionOption(option_id="keep_source", label="Keep source value", value=uncertainty.source_value)]
+                    if candidate is not None:
+                        options.insert(0, AgentQuestionOption(option_id="confirm_candidate", label=f"Use {candidate}", value=candidate))
+                    questions.append(AgentQuestion(
+                        question_id=f"identity:{row.row_id}",
+                        question_type="identity",
+                        title="Ingredient identity",
+                        prompt=(
+                            f'Possible source-backed match: "{candidate}".' if candidate is not None
+                            else "Regulens could not find a source-backed identity match."
+                        ),
+                        source_row=row.source_row,
+                        row_id=row.row_id,
+                        target_field="ingredient_name",
+                        uncertainty_code="ingredient_identity",
+                        affected_row_ids=[row.row_id],
+                        options=options,
+                    ))
+                elif uncertainty.uncertainty_code == "missing_concentration_unit":
+                    questions.append(AgentQuestion(
+                        question_id=f"unit:{row.row_id}",
+                        question_type="unit",
+                        title="Concentration unit",
+                        prompt=f'The CSV gives concentration "{uncertainty.source_value}" but no unit.',
+                        source_row=row.source_row,
+                        row_id=row.row_id,
+                        target_field="concentration.unit",
+                        uncertainty_code="missing_concentration_unit",
+                        affected_row_ids=[row.row_id],
+                        options=[
+                            AgentQuestionOption(option_id=value, label=label, value=value)
+                            for value, label in (("percent", "%"), ("ppm", "ppm"), ("mg/kg", "mg/kg"), ("leave_unavailable", "Leave unavailable"))
+                        ],
+                    ))
+                elif uncertainty.uncertainty_code == "concentration_unavailable":
+                    questions.append(AgentQuestion(
+                        question_id=f"nonnumeric:{row.row_id}",
+                        question_type="non_numeric_concentration",
+                        title="Concentration unavailable",
+                        prompt=f'"{uncertainty.source_value}" cannot be converted safely to a numeric concentration.',
+                        source_row=row.source_row,
+                        row_id=row.row_id,
+                        target_field="concentration",
+                        uncertainty_code="concentration_unavailable",
+                        affected_row_ids=[row.row_id],
+                        options=[
+                            AgentQuestionOption(option_id="leave_unavailable", label="Leave unavailable", value=None),
+                            AgentQuestionOption(option_id="enter_manually", label="Enter manually", value=None),
+                        ],
+                    ))
+                elif uncertainty.uncertainty_code == "preparation_stage":
+                    stage_rows.append(row)
+
+        if stage_rows:
+            questions.append(AgentQuestion(
+                question_id="global:preparation_stage",
+                question_type="preparation_stage",
+                title="Preparation stage",
+                prompt="Confirm when the listed imported concentrations apply. Finished product is a proposal and has not been applied.",
+                target_field="preparation_stage",
+                uncertainty_code="preparation_stage",
+                affected_row_ids=[row.row_id for row in stage_rows],
+                options=[
+                    AgentQuestionOption(option_id=value, label=label, value=value)
+                    for value, label in (("finished_product", "Finished product"), ("after_mixing", "After mixing for use"), ("ready_for_use", "Ready for use"))
+                ],
+            ))
+        view.questions = questions
 
     @staticmethod
     def _select_row(view: AgentSessionView, row_id: str | None, source_row: int | None) -> AgentIngredientRow:
@@ -1091,33 +1366,77 @@ class FormulationAgentService:
 
     def _apply_row_update(self, row: AgentIngredientRow, update) -> None:
         if update.name is not None:
-            row.name.value = update.name
+            edited_name = update.name.strip()
+            if not edited_name:
+                raise ValueError("Ingredient name cannot be blank")
+            row.name.value = edited_name
             row.name.interpretation_method = "user_edited"
-            row.name.confirmed_by_user = True
-            row.name.needs_confirmation = False
-            exact = self.catalogue.find_exact_name(update.name) if self.catalogue else None
+            exact = self.catalogue.find_exact_name(edited_name) if self.catalogue else None
+            row.name.needs_confirmation = exact is None
+            row.name.confirmed_by_user = exact is not None
             row.identity_status = AgentConfidence.CONFIRMED if exact else AgentConfidence.UNRESOLVED
             row.identity_catalogue_id = exact["ingredient_id"] if exact else None
             row.catalogue_identity = self._catalogue_evidence(exact)
+            self._remove_uncertainty(row, "ingredient_identity")
+            if exact is None:
+                row.unresolved_fields.append(AgentRowUncertainty(
+                    target_field="ingredient_name",
+                    uncertainty_code="ingredient_identity",
+                    source_value=row.name.source_value,
+                ))
         if update.cas_number is not None:
             row.cas_number = AgentFieldProvenance(value=update.cas_number or None, source_value=row.cas_number.source_value if row.cas_number else None, source_row=row.source_row, interpretation_method="user_edited", confirmed_by_user=True)
         if update.remove_concentration:
             row.concentration = None
-        elif update.concentration_value is not None:
+        elif "concentration_value" in update.model_fields_set:
+            if update.concentration_value is None:
+                raise ValueError("A concentration value must be numeric or explicitly left unavailable")
             row.concentration = AgentConcentration(
                 value=AgentFieldProvenance(value=update.concentration_value, source_value=None, source_row=row.source_row, interpretation_method="user_edited", confirmed_by_user=True),
                 unit=AgentFieldProvenance(value=update.concentration_unit, source_value=None, source_row=row.source_row, interpretation_method="user_edited", confirmed_by_user=True),
                 basis=AgentFieldProvenance(value=update.concentration_basis, source_value=None, source_row=row.source_row, interpretation_method="user_edited", confirmed_by_user=True),
-                preparation_stage=AgentFieldProvenance(value=update.preparation_stage, source_value=None, source_row=row.source_row, interpretation_method="user_edited", confirmed_by_user=True),
+                preparation_stage=(
+                    AgentFieldProvenance(value=update.preparation_stage, source_value=None, source_row=row.source_row, interpretation_method="user_edited", confirmed_by_user=True)
+                    if update.preparation_stage is not None else None
+                ),
             )
+            self._remove_uncertainty(row, "concentration_unavailable")
+            self._remove_uncertainty(row, "missing_concentration_unit")
+            self._remove_uncertainty(row, "preparation_stage")
+            if update.concentration_unit is None:
+                row.unresolved_fields.append(AgentRowUncertainty(
+                    target_field="concentration.unit",
+                    uncertainty_code="missing_concentration_unit",
+                    source_value=str(update.concentration_value),
+                ))
+            if update.preparation_stage is None:
+                row.unresolved_fields.append(AgentRowUncertainty(
+                    target_field="preparation_stage",
+                    uncertainty_code="preparation_stage",
+                ))
 
     def prepare(self, session_id: str, request: AgentPrepareRequest) -> AgentPreparedFormulation:
         with self._lock:
             session = self._get(session_id)
             if request.revision != session.view.revision:
                 raise AgentRevisionConflictError("The agent session changed; reload it before preparing.")
-            if any(question.blocking for question in session.view.questions):
-                raise AgentConfirmationRequiredError("Resolve all blocking clarification questions before preparing the formulation.")
+            self._reconcile_questions(session.view)
+            blocking = [question for question in session.view.questions if question.blocking]
+            if blocking:
+                remaining = []
+                for question in blocking:
+                    if question.row_id:
+                        row = self._select_row(session.view, question.row_id, question.source_row)
+                        remaining.append(f"Row {row.source_row} · {row.name.source_value or row.name.value} · {question.title.casefold()}")
+                    elif question.affected_row_ids:
+                        for row_id in question.affected_row_ids:
+                            row = self._select_row(session.view, row_id, None)
+                            remaining.append(f"Row {row.source_row} · {row.name.source_value or row.name.value} · {question.title.casefold()}")
+                    else:
+                        remaining.append(question.title)
+                raise AgentConfirmationRequiredError(
+                    f"{len(remaining)} item(s) still need confirmation: " + "; ".join(remaining)
+                )
             ingredients = []
             for row in session.view.interpreted_rows:
                 concentration = None

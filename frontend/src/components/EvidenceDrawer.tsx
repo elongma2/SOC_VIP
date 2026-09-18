@@ -81,6 +81,7 @@ export function EvidenceDrawer({
   const counterparts = result.rule_evaluations.flatMap((evaluation) => evaluation.evidence.acd_counterpart_rules)
     .filter((counterpart, index, all) => all.findIndex((item) => item.rule_id === counterpart.rule_id) === index);
   const explanation = result.review_explanation;
+  const regulatoryFactLabel = result.review_types.includes("identity_review") ? "Source" : "Rule";
 
   return (
     <>
@@ -142,12 +143,12 @@ export function EvidenceDrawer({
             </div>
             {result.review_required && (
               <div className="review-panel mt-4">
-                <h4 className="font-semibold text-amber-950">{explanation?.title ?? "Professional review needed"}</h4>
-                <p className="mt-2 text-sm leading-6 text-amber-950">{explanation?.summary ?? "Regulens could not apply the structured rule automatically."}</p>
+                <h4 className="font-semibold text-amber-950">{explanation?.title ?? "This result needs checking"}</h4>
+                <p className="mt-2 text-sm leading-6 text-amber-950">{explanation?.summary ?? "Regulens could not confirm one part of this result."}</p>
                 {explanation?.what_to_check && <div className="mt-4 border-t border-amber-200 pt-3"><div className="text-xs font-semibold uppercase tracking-wide text-amber-800">What to check</div><p className="mt-1 text-sm text-amber-950">{explanation.what_to_check}</p></div>}
                 {(explanation?.submitted_fact || explanation?.regulatory_fact) && <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
                   {explanation.submitted_fact && <div className="rounded-md border border-amber-200 bg-white/60 p-3"><span className="block text-xs text-amber-800">Submitted</span><strong>{explanation.submitted_fact}</strong></div>}
-                  {explanation.regulatory_fact && <div className="rounded-md border border-amber-200 bg-white/60 p-3"><span className="block text-xs text-amber-800">Rule</span><strong>{explanation.regulatory_fact}</strong></div>}
+                  {explanation.regulatory_fact && <div className="rounded-md border border-amber-200 bg-white/60 p-3"><span className="block text-xs text-amber-800">{regulatoryFactLabel}</span><strong>{explanation.regulatory_fact}</strong></div>}
                 </div>}
               </div>
             )}

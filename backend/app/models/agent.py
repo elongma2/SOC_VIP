@@ -59,6 +59,15 @@ class AgentSourceMetadata(StrictModel):
     mapped_as: str
 
 
+class AgentRowUncertainty(StrictModel):
+    target_field: Literal["ingredient_name", "concentration", "concentration.unit", "preparation_stage"]
+    uncertainty_code: Literal[
+        "ingredient_identity", "missing_concentration_unit", "concentration_unavailable", "preparation_stage",
+    ]
+    source_value: str | None = None
+    proposed_value: Any = None
+
+
 class AgentIngredientRow(StrictModel):
     row_id: str
     source_row: int
@@ -72,6 +81,7 @@ class AgentIngredientRow(StrictModel):
     catalogue_identity: CatalogueIdentity | None = None
     source_metadata: list[AgentSourceMetadata] = Field(default_factory=list)
     issues: list[str] = Field(default_factory=list)
+    unresolved_fields: list[AgentRowUncertainty] = Field(default_factory=list)
 
 
 class AgentColumnMapping(StrictModel):
@@ -108,6 +118,14 @@ class AgentQuestion(StrictModel):
     prompt: str
     source_row: int | None = None
     row_id: str | None = None
+    target_field: Literal[
+        "ingredient_name", "concentration", "concentration.unit", "preparation_stage", "product_context", "column_mapping",
+    ] | None = None
+    uncertainty_code: Literal[
+        "ingredient_identity", "missing_concentration_unit", "concentration_unavailable", "preparation_stage",
+        "product_context", "column_mapping",
+    ] | None = None
+    affected_row_ids: list[str] = Field(default_factory=list)
     blocking: bool = True
     options: list[AgentQuestionOption] = Field(default_factory=list)
 
@@ -122,6 +140,20 @@ class AgentFailure(StrictModel):
     code: str
     message: str
     recoverable: bool = True
+
+
+class AgentAttemptDiagnostic(StrictModel):
+    attempt_number: int = Field(ge=1)
+    status: Literal["success", "failure"]
+    failure_category: str | None = None
+    configured_model: str
+    actual_model: str | None = None
+    response_ids: list[str] = Field(default_factory=list)
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+    tool_calls: int = Field(default=0, ge=0)
+    request_rounds: int = Field(default=0, ge=0)
 
 
 class AgentSessionView(StrictModel):
@@ -141,6 +173,10 @@ class AgentSessionView(StrictModel):
     error: AgentFailure | None = None
     model: str | None = None
     usage: OpenAIUsage | None = None
+    attempts: int = Field(default=0, ge=0)
+    successful_attempt: int | None = Field(default=None, ge=1)
+    attempt_diagnostics: list[AgentAttemptDiagnostic] = Field(default_factory=list)
+    total_usage: OpenAIUsage | None = None
 
 
 class AgentAnswer(StrictModel):

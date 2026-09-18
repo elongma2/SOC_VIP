@@ -46,8 +46,8 @@ def valid_output() -> dict:
     return {"explanations": [{
         "item_id": "1",
         "title": "Ingredient identity needs confirmation",
-        "summary": "The submitted details do not point to one clear source-backed ingredient.",
-        "what_to_check": "Confirm the ingredient name and CAS number from the formulation records.",
+        "summary": "The ingredient name and CAS information do not clearly point to one source-backed ingredient.",
+        "what_to_check": "Confirm the correct INCI or common name and CAS number.",
         "submitted_fact": None,
         "regulatory_fact": None,
     }]}
@@ -63,6 +63,8 @@ def test_model_explanation_is_batched_grounded_and_cached():
     assert len(fake.calls) == 1
     assert fake.calls[0]["store"] is False
     assert fake.calls[0]["tools"] == []
+    assert "short sentences, simple words" in fake.calls[0]["instructions"]
+    assert "conditional wording" in fake.calls[0]["instructions"]
     assert "raw_fragments" not in fake.calls[0]["input"][0]["content"]
     assert first.ingredient_results[0].primary_finding == original_finding
     assert first.ingredient_results[0].review_required is True
@@ -83,7 +85,7 @@ def test_missing_key_keeps_review_and_uses_plain_fallback():
     assert enriched.review_explanation_metadata.status == "fallback"
 
 
-def test_stage_and_conditional_fallbacks_are_actionable():
+def test_stage_and_conditional_fallbacks_are_plain_and_actionable():
     store = load_accepted_store(ROOT)
     catalogue = load_accepted_ingredient_catalog(ROOT)
     stage_response = screen_formulation(
@@ -95,8 +97,11 @@ def test_stage_and_conditional_fallbacks_are_actionable():
         ingredient_catalog=catalogue,
     )
     stage_result = ReviewExplanationService(None).enrich(stage_response).ingredient_results[0]
-    assert stage_result.review_explanation.title == "Preparation stage needs review"
-    assert "preparation stage" in stage_result.review_explanation.what_to_check
+    assert stage_result.review_explanation.title == "Concentration stage needs confirmation"
+    assert stage_result.review_explanation.summary == (
+        "The submitted concentration is for one stage, but the rule applies at a different stage."
+    )
+    assert stage_result.review_explanation.what_to_check == "Confirm the concentration at the stage stated in the rule."
 
     conditional_response = screen_formulation(
         store,
@@ -105,7 +110,41 @@ def test_stage_and_conditional_fallbacks_are_actionable():
     )
     conditional_result = ReviewExplanationService(None).enrich(conditional_response).ingredient_results[0]
     assert conditional_result.review_required is True
-    assert conditional_result.review_explanation.title == "Rule conditions need review"
+    assert conditional_result.review_explanation.title == "Rule exception needs confirmation"
+    assert conditional_result.review_explanation.summary == "This rule has an exception that still needs checking."
+    assert conditional_result.review_explanation.what_to_check.startswith("Check whether the exception")
+
+
+def test_name_and_cas_conflict_has_specific_plain_fallback_and_grounded_facts():
+    deterministic = screen_formulation(
+        load_accepted_store(ROOT),
+        FormulationRequest.model_validate({"ingredients": [{
+            "name": "Aminophylline",
+            "cas_number": "128-37-0",
+        }]}),
+        ingredient_catalog=load_accepted_ingredient_catalog(ROOT),
+    )
+    result = ReviewExplanationService(None).enrich(deterministic).ingredient_results[0]
+    explanation = result.review_explanation
+    assert result.review_required is True
+    assert explanation.title == "Name and CAS do not match"
+    assert explanation.summary == "The ingredient name and CAS number do not point to the same ingredient."
+    assert explanation.what_to_check == "Confirm the correct ingredient name and CAS number."
+    assert explanation.submitted_fact == "Name: Aminophylline · CAS: 128-37-0"
+    assert explanation.regulatory_fact == "Source CAS for Aminophylline: 317-34-0"
+
+
+def test_model_jargon_is_rejected_and_plain_fallback_is_kept():
+    jargon = valid_output()
+    jargon["explanations"][0]["title"] = "Conditional wording needs review"
+    jargon["explanations"][0]["summary"] = "The cited entry could not be structured automatically."
+    fake = FakeResponses(jargon)
+    enriched = ReviewExplanationService(
+        "test-key", client_factory=lambda **_: SimpleNamespace(responses=fake)
+    ).enrich(review_response())
+    explanation = enriched.ingredient_results[0].review_explanation
+    assert explanation.source == "deterministic_fallback"
+    assert "cited entry" not in explanation.summary.casefold()
 
 
 def test_unsafe_or_ungrounded_model_output_fails_closed():

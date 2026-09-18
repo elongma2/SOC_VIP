@@ -13,9 +13,9 @@ interface RowDraft {
   name: string;
   cas: string;
   value: string;
-  unit: ConcentrationUnit;
+  unit: ConcentrationUnit | "";
   basis: ConcentrationBasis | null;
-  stage: PreparationStage;
+  stage: PreparationStage | "";
 }
 
 function optional(value: string): string | null {
@@ -27,14 +27,15 @@ function rowDrafts(session: AgentSession): Record<string, RowDraft> {
     name: String(row.name.value ?? ""),
     cas: String(row.cas_number?.value ?? ""),
     value: row.concentration?.value?.value == null ? "" : String(row.concentration.value.value),
-    unit: row.concentration?.unit?.value ?? "percent",
+    unit: row.concentration?.unit?.value ?? "",
     basis: row.concentration?.basis.value ?? null,
-    stage: row.concentration?.preparation_stage?.value ?? "finished_product",
+    stage: row.concentration?.preparation_stage?.value ?? "",
   }]));
 }
 
 export function AgentPage() {
   const fileInput = useRef<HTMLInputElement>(null);
+  const initializedSessionId = useRef<string | null>(null);
   const [session, setSession] = useState<AgentSession | null>(null);
   const [prepared, setPrepared] = useState<AgentPreparedFormulation | null>(null);
   const [options, setOptions] = useState<ScreeningOptions | null>(null);
@@ -47,20 +48,25 @@ export function AgentPage() {
   const [response, setResponse] = useState<ScreeningResponse | null>(null);
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const [manualValues, setManualValues] = useState<Record<string, { value: string; unit: ConcentrationUnit; stage: PreparationStage }>>({});
-  const [contextAnswer, setContextAnswer] = useState("");
+  const [retrying, setRetrying] = useState(false);
+  const [highlightedRow, setHighlightedRow] = useState<string | null>(null);
+  const [highlightedQuestion, setHighlightedQuestion] = useState<string | null>(null);
 
   useEffect(() => { getScreeningOptions().then(setOptions).catch(() => setError("Unable to load screening options.")); }, []);
   useEffect(() => {
     if (!session) return;
     setDrafts(rowDrafts(session));
-    if (typeof session.formulation_id?.value === "string") setFormulationId(session.formulation_id.value);
-    if (typeof session.formulation_name?.value === "string") setFormulationName(session.formulation_name.value);
-    if (typeof session.product_context?.value === "string") setProductContext(session.product_context.value);
+    if (initializedSessionId.current !== session.session_id) {
+      initializedSessionId.current = session.session_id;
+      setFormulationId(typeof session.formulation_id?.value === "string" ? session.formulation_id.value : "");
+      setFormulationName(typeof session.formulation_name?.value === "string" ? session.formulation_name.value : "");
+    }
+    setProductContext(typeof session.product_context?.value === "string" ? session.product_context.value : "");
   }, [session]);
 
   const upload = async (file?: File) => {
     if (!file || busy) return;
-    setBusy(true); setError(null); setPrepared(null); setResponse(null); setSelectedRow(null); setContextAnswer(""); setProductContext(""); setFormulationId(""); setFormulationName("");
+    setBusy(true); setError(null); setPrepared(null); setResponse(null); setSelectedRow(null); setProductContext(""); setFormulationId(""); setFormulationName("");
     try { setSession(await uploadAgentCSV(file)); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "The CSV could not be uploaded."); }
     finally { setBusy(false); }
@@ -81,30 +87,53 @@ export function AgentPage() {
     finally { setBusy(false); }
   };
 
-  const saveEdits = async () => {
+  const changeProductContext = async (value: string) => {
+    setProductContext(value);
+    const contextQuestion = session?.questions.find((question) => question.question_type === "product_context") ?? null;
+    if (!contextQuestion) return;
+    const option = contextQuestion.options.find((item) => item.value === (value || null));
+    if (option) await answer(contextQuestion, option.option_id);
+  };
+
+  const saveRow = async (rowId: string, draft: RowDraft, field: "name" | "cas" | "concentration") => {
     if (!session || busy) return;
-    const updates = session.interpreted_rows.map((row) => {
-      const draft = drafts[row.row_id];
-      const parsed = Number(draft.value);
-      return {
-        row_id: row.row_id,
-        name: draft.name,
-        cas_number: draft.cas,
-        ...(draft.value.trim() ? {
-          concentration_value: parsed,
-          concentration_unit: draft.unit,
-          concentration_basis: draft.basis,
-          preparation_stage: draft.stage,
-        } : row.concentration ? { remove_concentration: true } : {}),
-      };
-    });
-    if (updates.some((update) => "concentration_value" in update && !Number.isFinite(update.concentration_value))) {
-      setError("Concentration edits must be numeric."); return;
-    }
+    const update = field === "name"
+      ? { row_id: rowId, name: draft.name }
+      : field === "cas"
+        ? { row_id: rowId, cas_number: draft.cas }
+        : (() => {
+            if (!draft.value.trim()) { setError("Enter a numeric concentration or use Leave unavailable in its clarification card."); return null; }
+            const parsed = Number(draft.value);
+            if (!Number.isFinite(parsed) || parsed < 0) { setError("Concentration edits must be non-negative numbers."); return null; }
+            return {
+              row_id: rowId,
+              concentration_value: parsed,
+              concentration_unit: draft.unit || null,
+              concentration_basis: draft.basis,
+              preparation_stage: draft.stage || null,
+            };
+          })();
+    if (!update) return;
     setBusy(true); setError(null);
-    try { setSession(await answerAgentQuestions(session, [], updates)); setPrepared(null); }
+    try { setSession(await answerAgentQuestions(session, [], [update])); setPrepared(null); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Row edits could not be saved."); }
     finally { setBusy(false); }
+  };
+
+  const focusRow = (rowId: string, targetField?: AgentQuestion["target_field"]) => {
+    const element = document.getElementById(`agent-row-${rowId}`);
+    element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedRow(rowId);
+    window.setTimeout(() => setHighlightedRow((current) => current === rowId ? null : current), 1400);
+    const selector = targetField === "ingredient_name" ? "input[data-agent-field='ingredient_name']" : targetField === "concentration.unit" ? "select[data-agent-field='concentration.unit']" : targetField === "preparation_stage" ? "select[data-agent-field='preparation_stage']" : "input, select";
+    window.setTimeout(() => element?.querySelector<HTMLElement>(selector)?.focus(), 250);
+  };
+
+  const focusQuestion = (questionId: string) => {
+    const element = document.getElementById(`agent-question-${questionId}`);
+    element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedQuestion(questionId);
+    window.setTimeout(() => setHighlightedQuestion((current) => current === questionId ? null : current), 1400);
   };
 
   const prepare = async () => {
@@ -134,10 +163,29 @@ export function AgentPage() {
 
   const retry = async () => {
     if (!session || busy) return;
-    setBusy(true); setError(null);
+    setBusy(true); setRetrying(true); setError(null);
     try { setSession(await retryAgentSession(session.session_id)); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Retry failed."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setRetrying(false); }
+  };
+
+  const startNewCSV = () => {
+    if (busy) return;
+    initializedSessionId.current = null;
+    if (fileInput.current) fileInput.current.value = "";
+    setSession(null);
+    setPrepared(null);
+    setResponse(null);
+    setSelectedRow(null);
+    setDrafts({});
+    setFormulationId("");
+    setFormulationName("");
+    setProductContext("");
+    setManualValues({});
+    setRetrying(false);
+    setHighlightedRow(null);
+    setHighlightedQuestion(null);
+    setError(null);
   };
 
   const selectedResult = response?.ingredient_results.find((item) => item.submitted_row_number === selectedRow) ?? null;
@@ -157,6 +205,18 @@ export function AgentPage() {
   const contextQuestion = session?.questions.find((question) => question.question_type === "product_context") ?? null;
   const clarificationQuestions = session?.questions.filter((question) => question.question_type !== "product_context") ?? [];
   const stageQuestion = session?.questions.find((question) => question.question_type === "preparation_stage") ?? null;
+  const blockingItems = session?.questions.flatMap((question) => {
+    if (question.row_id) {
+      const row = session.interpreted_rows.find((item) => item.row_id === question.row_id);
+      return row ? [`Row ${row.source_row} · ${row.name.source_value ?? row.name.value} · ${question.title.toLocaleLowerCase()}`] : [];
+    }
+    if (question.affected_row_ids.length) return question.affected_row_ids.flatMap((rowId) => {
+      const row = session.interpreted_rows.find((item) => item.row_id === rowId);
+      return row ? [`Row ${row.source_row} · ${row.name.source_value ?? row.name.value} · ${question.title.toLocaleLowerCase()}`] : [];
+    });
+    return [question.title];
+  }) ?? [];
+  const rowsNeedingConfirmation = new Set(session?.questions.flatMap((question) => question.row_id ? [question.row_id] : question.affected_row_ids) ?? []);
 
   return (
     <div className={`workspace ${selectedResult ? "workspace-with-drawer" : ""}`}>
@@ -177,8 +237,8 @@ export function AgentPage() {
             onDrop={(event) => { event.preventDefault(); event.currentTarget.classList.remove("is-dragging"); void upload(event.dataTransfer.files[0]); }}
           >
             {busy ? <LoaderCircle className="animate-spin text-slate-500" size={34} /> : <FileUp className="text-slate-500" size={34} />}
-            <h2>{busy ? "Interpreting formulation…" : "Drop formulation CSV here"}</h2>
-            <p>or</p>
+            <h2>{busy ? "Interpreting formulation" : "Drop formulation CSV here"}</h2>
+            <p>{busy ? "Regulens is identifying the formulation structure and ingredient fields." : "or"}</p>
             <button className="secondary-button" type="button" onClick={() => fileInput.current?.click()} disabled={busy}>Browse files</button>
             <input ref={fileInput} className="sr-only" type="file" accept=".csv,text/csv" aria-label="Choose formulation CSV" onChange={(event) => void upload(event.target.files?.[0])} />
             <small>CSV supported · maximum 2 MiB</small>
@@ -188,16 +248,22 @@ export function AgentPage() {
         {session && (
           <div className="space-y-5">
             <section className="agent-status-panel">
-              <div>
-                <p className="eyebrow">{session.state === "failed" ? "Interpretation stopped" : "Analysis complete"}</p>
-                <h2 className="section-title">{session.filename}</h2>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="eyebrow">{retrying ? "Interpreting formulation" : session.state === "failed" ? "Interpretation could not be completed" : "Analysis complete"}</p>
+                  <h2 className="section-title">{session.filename}</h2>
+                </div>
+                <button className="secondary-button shrink-0" type="button" onClick={startNewCSV} disabled={busy}>
+                  <FileUp size={14} /> Start new CSV
+                </button>
               </div>
               <div className="agent-stat-strip">
                 <span><strong>{session.interpreted_rows.length}</strong> formulation rows detected</span>
-                <span><strong>{session.interpreted_rows.length - session.questions.filter((item) => item.source_row).length}</strong> ready</span>
-                <span><strong>{session.questions.length}</strong> need confirmation</span>
+                <span><strong>{session.interpreted_rows.length - rowsNeedingConfirmation.size}</strong> resolved</span>
+                <span><strong>{blockingItems.length}</strong> need confirmation</span>
               </div>
-              {session.state === "failed" && <div className="agent-failure"><AlertTriangle size={17} /><span>{session.error?.message}</span><button className="secondary-button" type="button" onClick={retry} disabled={busy}><RotateCcw size={14} /> Retry</button></div>}
+              {retrying && <div className="agent-failure"><LoaderCircle className="animate-spin" size={17} /><span>Regulens is identifying the formulation structure and ingredient fields.</span></div>}
+              {session.state === "failed" && !retrying && <div className="agent-failure"><AlertTriangle size={17} /><span>{session.error?.message}</span><button className="secondary-button" type="button" onClick={retry} disabled={busy}><RotateCcw size={14} /> Retry</button></div>}
             </section>
 
             {session.interpreted_rows.length > 0 && (
@@ -212,7 +278,8 @@ export function AgentPage() {
                   <div className="field-label">
                     <div className="flex items-center gap-1.5"><span>Product context</span><HelpHint label="Agent Product context"><p>Some restrictions depend on the exact cosmetic product type. Select only an accepted backend option; the Agent does not infer a regulatory hierarchy.</p></HelpHint></div>
                     <span className="optional-label">Optional when unavailable</span>
-                    <select aria-label="Agent Product context" className="field-control" value={productContext} onChange={(event) => setProductContext(event.target.value)}>
+                    <select aria-label="Agent Product context" className="field-control" value={contextQuestion && !productContext ? "__unresolved" : productContext} disabled={busy} onChange={(event) => void changeProductContext(event.target.value)}>
+                      {contextQuestion && <option value="__unresolved" disabled>Choose a product context</option>}
                       <option value="">No product context supplied</option>
                       {options?.product_contexts.map((context) => <option key={context}>{context}</option>)}
                     </select>
@@ -226,18 +293,9 @@ export function AgentPage() {
                     ? <>Preparation stage: <strong>Finished product</strong> is only a visible proposal and has not been applied.</>
                     : <>Preparation stage values shown below come from the source or a confirmed selection.</>}</p>
                 </div>
-                {contextQuestion && (
-                  <div className="agent-inline-question">
-                    <div><strong>{contextQuestion.title}</strong><p>{contextQuestion.prompt}</p></div>
-                    <select aria-label="Resolve Product context" className="field-control" value={contextAnswer} onChange={(event) => setContextAnswer(event.target.value)}>
-                      <option value="">Choose an accepted Product Context</option>
-                      {contextQuestion.options.map((option) => <option key={option.option_id} value={option.option_id}>{option.label}</option>)}
-                    </select>
-                    <button className="secondary-button" type="button" disabled={!contextAnswer || busy} onClick={() => void answer(contextQuestion, contextAnswer)}>Confirm context</button>
-                  </div>
-                )}
-                {session.state !== "failed" && session.questions.length === 0 && !prepared && (
-                  <div className="mt-5 flex justify-end"><button className="primary-button" type="button" onClick={prepare} disabled={busy}>{busy ? "Preparing…" : "Prepare formulation"}</button></div>
+                {contextQuestion && <div className="agent-inline-question"><div><strong>{contextQuestion.title}</strong><p>{contextQuestion.prompt}</p></div></div>}
+                {session.state !== "failed" && !prepared && (
+                  <div className="mt-5 flex justify-end"><button className="primary-button" type="button" onClick={prepare} disabled={busy || blockingItems.length > 0}>{busy ? "Preparing…" : "Prepare formulation"}</button></div>
                 )}
               </section>
             )}
@@ -251,35 +309,43 @@ export function AgentPage() {
                     <tbody>{session.interpreted_rows.map((row) => {
                       const draft = drafts[row.row_id];
                       if (!draft) return null;
-                      return <tr key={row.row_id}>
+                      const rowQuestions = session.questions.filter((question) => question.row_id === row.row_id || question.affected_row_ids.includes(row.row_id));
+                      const requiredFieldsFilled = draft.name.trim().length > 0;
+                      const rowStatus = rowQuestions.length ? "Needs confirmation" : requiredFieldsFilled ? "Resolved" : "Unresolved";
+                      return <tr id={`agent-row-${row.row_id}`} className={highlightedRow === row.row_id ? "agent-target-highlight" : ""} key={row.row_id}>
                         <td><small>Row{row.source_rows.length > 1 ? "s" : ""} {row.source_rows.join(", ")}</small><strong>{row.name.source_value}</strong></td>
                         <td><div className="agent-field-stack">
-                          <label><span>Ingredient name</span><input className="field-control" aria-label={`Row ${row.source_row} interpreted name`} value={draft.name} onChange={(event) => setDrafts((current) => ({ ...current, [row.row_id]: { ...draft, name: event.target.value } }))} /></label>
-                          <label><span>CAS, if supplied</span><input className="field-control" aria-label={`Row ${row.source_row} CAS`} value={draft.cas} placeholder="—" onChange={(event) => setDrafts((current) => ({ ...current, [row.row_id]: { ...draft, cas: event.target.value } }))} /></label>
+                          <label><span>Ingredient name</span><input data-agent-field="ingredient_name" className="field-control" aria-label={`Row ${row.source_row} interpreted name`} value={draft.name} onChange={(event) => setDrafts((current) => ({ ...current, [row.row_id]: { ...draft, name: event.target.value } }))} onBlur={() => void saveRow(row.row_id, draft, "name")} /></label>
+                          <label><span>CAS, if supplied</span><input className="field-control" aria-label={`Row ${row.source_row} CAS`} value={draft.cas} placeholder="—" onChange={(event) => setDrafts((current) => ({ ...current, [row.row_id]: { ...draft, cas: event.target.value } }))} onBlur={() => void saveRow(row.row_id, draft, "cas")} /></label>
                         </div></td>
                         <td><div className="agent-concentration-grid">
-                          <label><span>Value</span><input className="field-control" aria-label={`Row ${row.source_row} concentration`} value={draft.value} placeholder="—" onChange={(event) => setDrafts((current) => ({ ...current, [row.row_id]: { ...draft, value: event.target.value } }))} /></label>
-                          <label><span>Unit</span><select className="field-control" aria-label={`Row ${row.source_row} unit`} value={draft.unit} onChange={(event) => setDrafts((current) => ({ ...current, [row.row_id]: { ...draft, unit: event.target.value as ConcentrationUnit } }))}><option value="percent">%</option><option value="ppm">ppm</option><option value="mg/kg">mg/kg</option></select></label>
-                          <label><span>Basis</span><select className="field-control" aria-label={`Row ${row.source_row} basis`} value={draft.basis ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [row.row_id]: { ...draft, basis: optional(event.target.value) as ConcentrationBasis | null } }))}><option value="">No specific basis</option>{options?.concentration_bases.filter((basis): basis is ConcentrationBasis => basis !== null).map((basis) => <option key={basis} value={basis}>{basis}</option>)}</select></label>
-                          <label><span>Preparation stage</span><select className="field-control" aria-label={`Row ${row.source_row} stage`} value={draft.stage} onChange={(event) => setDrafts((current) => ({ ...current, [row.row_id]: { ...draft, stage: event.target.value as PreparationStage } }))}><option value="finished_product">Finished product</option><option value="after_mixing">After mixing for use</option><option value="ready_for_use">Ready for use</option></select></label>
+                          <label><span>Value</span><input data-agent-field="concentration" className="field-control" aria-label={`Row ${row.source_row} concentration`} value={draft.value} placeholder="—" onChange={(event) => setDrafts((current) => ({ ...current, [row.row_id]: { ...draft, value: event.target.value } }))} onBlur={() => { if (draft.value.trim()) void saveRow(row.row_id, draft, "concentration"); }} /></label>
+                          <label><span>Unit</span><select data-agent-field="concentration.unit" className="field-control" aria-label={`Row ${row.source_row} unit`} value={draft.unit} onChange={(event) => { const next = { ...draft, unit: event.target.value as ConcentrationUnit | "" }; setDrafts((current) => ({ ...current, [row.row_id]: next })); if (next.value.trim()) void saveRow(row.row_id, next, "concentration"); }}><option value="">Choose unit</option><option value="percent">%</option><option value="ppm">ppm</option><option value="mg/kg">mg/kg</option></select></label>
+                          <label><span>Basis</span><select className="field-control" aria-label={`Row ${row.source_row} basis`} value={draft.basis ?? ""} onChange={(event) => { const next = { ...draft, basis: optional(event.target.value) as ConcentrationBasis | null }; setDrafts((current) => ({ ...current, [row.row_id]: next })); if (next.value.trim()) void saveRow(row.row_id, next, "concentration"); }}><option value="">No specific basis</option>{options?.concentration_bases.filter((basis): basis is ConcentrationBasis => basis !== null).map((basis) => <option key={basis} value={basis}>{basis}</option>)}</select></label>
+                          <label><span>Preparation stage</span><select data-agent-field="preparation_stage" className="field-control" aria-label={`Row ${row.source_row} stage`} value={draft.stage} onChange={(event) => { const next = { ...draft, stage: event.target.value as PreparationStage | "" }; setDrafts((current) => ({ ...current, [row.row_id]: next })); if (next.value.trim()) void saveRow(row.row_id, next, "concentration"); }}><option value="">Choose stage</option><option value="finished_product">Finished product</option><option value="after_mixing">After mixing for use</option><option value="ready_for_use">Ready for use</option></select></label>
                         </div></td>
                         <td>
-                          <span className={`agent-row-status ${row.name.needs_confirmation ? "warning" : "ready"}`}>{row.name.needs_confirmation ? "Needs confirmation" : row.identity_status.replaceAll("_", " ")}</span>
+                          <button className={`agent-row-status ${rowQuestions.length ? "warning" : rowStatus === "Unresolved" ? "unresolved" : "ready"}`} type="button" title={rowStatus === "Resolved" ? "All required Agent input is complete" : undefined} onClick={() => rowQuestions[0] && focusQuestion(rowQuestions[0].question_id)}>{rowStatus}{rowQuestions.length ? ` · ${rowQuestions.length} issue${rowQuestions.length === 1 ? "" : "s"}` : ""}</button>
                         </td>
                       </tr>;
                     })}</tbody>
                   </table>
                 </div>
-                <div className="flex justify-end border-t border-slate-200 p-3"><button className="secondary-button" type="button" onClick={saveEdits} disabled={busy}>Save row edits</button></div>
               </section>
             )}
 
             {clarificationQuestions.length > 0 && (
               <section>
                 <p className="eyebrow">Clarification required</p>
-                <div className="agent-question-grid">{clarificationQuestions.map((question) => (
-                  <article className="agent-question" key={question.question_id}>
-                    <h3>{question.title}</h3><p>{question.prompt}</p>
+                <div className="agent-question-grid">{clarificationQuestions.map((question) => {
+                  const row = question.row_id ? session.interpreted_rows.find((item) => item.row_id === question.row_id) : null;
+                  const candidate = question.question_type === "identity" ? question.options.find((option) => option.option_id === "confirm_candidate") : null;
+                  return (
+                  <article id={`agent-question-${question.question_id}`} className={`agent-question ${highlightedQuestion === question.question_id ? "agent-target-highlight" : ""}`} key={question.question_id}>
+                    {row && <div className="agent-question-row"><strong>Row {row.source_row} · {row.name.source_value ?? row.name.value}</strong><button type="button" onClick={() => focusRow(row.row_id, question.target_field)}>View row</button></div>}
+                    <h3>{question.title}</h3>
+                    {question.question_type === "identity" && row ? <div className="agent-question-facts"><span>Submitted</span><strong>{row.name.source_value}</strong>{candidate && <><span>Possible source-backed match</span><strong>{String(candidate.value)}</strong><span>Source</span><strong>{row.catalogue_identity?.source_name ?? "EU Common Ingredient Glossary"}</strong></>}</div> : <p>{question.prompt}</p>}
+                    {question.question_type === "preparation_stage" && <ul className="agent-question-rows">{question.affected_row_ids.map((rowId) => { const affected = session.interpreted_rows.find((item) => item.row_id === rowId); return affected ? <li key={rowId}><span>Row {affected.source_row} · {affected.name.source_value ?? affected.name.value}</span><button type="button" onClick={() => focusRow(rowId, "preparation_stage")}>View row</button></li> : null; })}</ul>}
                     {question.question_type === "non_numeric_concentration" && (() => {
                       const manual = manualValues[question.question_id] ?? { value: "", unit: "percent" as ConcentrationUnit, stage: "finished_product" as PreparationStage };
                       return <div className="mt-3 grid grid-cols-3 gap-2">
@@ -288,9 +354,17 @@ export function AgentPage() {
                         <select className="field-control" aria-label={`${question.title} manual stage`} value={manual.stage} onChange={(event) => setManualValues((current) => ({ ...current, [question.question_id]: { ...manual, stage: event.target.value as PreparationStage } }))}><option value="finished_product">Finished product</option><option value="after_mixing">After mixing</option><option value="ready_for_use">Ready for use</option></select>
                       </div>;
                     })()}
+                    {question.question_type === "identity" && !candidate && row && <button className="secondary-button mt-3" type="button" onClick={() => focusRow(row.row_id, "ingredient_name")}>Edit ingredient name</button>}
                     <div className="mt-3 flex flex-wrap gap-2">{question.options.map((option) => <button className="secondary-button" key={option.option_id} type="button" onClick={() => void answer(question, option.option_id)} disabled={busy}>{option.label}</button>)}</div>
                   </article>
-                ))}</div>
+                );})}</div>
+              </section>
+            )}
+
+            {blockingItems.length > 0 && session.state !== "failed" && (
+              <section className="agent-blocking-summary" aria-live="polite">
+                <strong>{blockingItems.length} item{blockingItems.length === 1 ? "" : "s"} still need confirmation</strong>
+                <ul>{blockingItems.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul>
               </section>
             )}
 
@@ -306,7 +380,8 @@ export function AgentPage() {
               </details>
             )}
 
-            <details className="agent-activity"><summary>Agent activity</summary><ul>{session.activity.map((item) => <li key={item.activity_id}><span>{item.status === "complete" ? "✓" : "⚠"}</span>{item.message}</li>)}</ul>{session.usage && <p className="mt-3 text-xs text-slate-500">Model {session.usage.actual_model ?? session.usage.configured_model} · {session.usage.input_tokens} input tokens · {session.usage.output_tokens} output tokens · {session.usage.tool_calls} tool calls</p>}</details>
+            <details className="agent-activity"><summary>Agent activity</summary><ul>{session.activity.map((item) => <li key={item.activity_id}><span>{item.status === "complete" ? "✓" : "⚠"}</span>{item.message}</li>)}</ul></details>
+            {session.attempt_diagnostics.length > 0 && <details className="agent-activity"><summary>Technical activity</summary><p className="mt-3 text-xs text-slate-500">{session.attempts} attempt{session.attempts === 1 ? "" : "s"}{session.successful_attempt ? ` · successful attempt ${session.successful_attempt}` : ""}</p><ul>{session.attempt_diagnostics.map((attempt) => <li key={attempt.attempt_number}><span>{attempt.status === "success" ? "✓" : "⚠"}</span>Attempt {attempt.attempt_number} · {attempt.status}{attempt.failure_category ? ` · ${attempt.failure_category.replaceAll("_", " ")}` : ""} · {attempt.actual_model ?? attempt.configured_model} · {attempt.input_tokens} input · {attempt.output_tokens} output · {attempt.tool_calls} tool calls</li>)}</ul>{session.total_usage && <p className="mt-3 text-xs text-slate-500">Total usage · {session.total_usage.input_tokens} input tokens · {session.total_usage.output_tokens} output tokens · {session.total_usage.tool_calls} tool calls</p>}</details>}
 
             {prepared && !response && (
               <section className="agent-ready-panel">

@@ -49,6 +49,14 @@ export interface AgentIngredientRow {
   catalogue_identity: CatalogueIdentity | null;
   source_metadata: AgentSourceMetadata[];
   issues: string[];
+  unresolved_fields: AgentRowUncertainty[];
+}
+
+export interface AgentRowUncertainty {
+  target_field: "ingredient_name" | "concentration" | "concentration.unit" | "preparation_stage";
+  uncertainty_code: "ingredient_identity" | "missing_concentration_unit" | "concentration_unavailable" | "preparation_stage";
+  source_value: string | null;
+  proposed_value: unknown;
 }
 
 export interface AgentQuestionOption { option_id: string; label: string; value: unknown; }
@@ -59,8 +67,25 @@ export interface AgentQuestion {
   prompt: string;
   source_row: number | null;
   row_id: string | null;
+  target_field: "ingredient_name" | "concentration" | "concentration.unit" | "preparation_stage" | "product_context" | "column_mapping" | null;
+  uncertainty_code: "ingredient_identity" | "missing_concentration_unit" | "concentration_unavailable" | "preparation_stage" | "product_context" | "column_mapping" | null;
+  affected_row_ids: string[];
   blocking: boolean;
   options: AgentQuestionOption[];
+}
+
+export interface AgentAttemptDiagnostic {
+  attempt_number: number;
+  status: "success" | "failure";
+  failure_category: string | null;
+  configured_model: string;
+  actual_model: string | null;
+  response_ids: string[];
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  tool_calls: number;
+  request_rounds: number;
 }
 
 export interface AgentSession {
@@ -80,6 +105,10 @@ export interface AgentSession {
   error: { code: string; message: string; recoverable: boolean } | null;
   model: string | null;
   usage: OpenAIUsage | null;
+  attempts: number;
+  successful_attempt: number | null;
+  attempt_diagnostics: AgentAttemptDiagnostic[];
+  total_usage: OpenAIUsage | null;
 }
 
 export interface AgentPreparedFormulation {

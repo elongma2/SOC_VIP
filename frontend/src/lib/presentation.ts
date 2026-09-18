@@ -19,7 +19,7 @@ const reviewReasonLabels: Record<string, string> = {
   supplied_cas_is_malformed: "The CAS number is not in a valid format. Check it.",
   source_wording_or_regulatory_field_differs: "The ACD and Singapore records differ. Compare the source wording before deciding.",
   ambiguous_multi_case_concentration_not_normalized: "This rule has several limits. Confirm which one applies to this product.",
-  conditional_prohibition_wording_not_structured: "This prohibition has an exception or condition that a person needs to check.",
+  conditional_prohibition_wording_not_structured: "This rule has an exception that still needs checking.",
   additional_numeric_condition_not_structured: "This rule has another number or limit that the system cannot check automatically.",
   concentration_condition_not_normalized: "The system could not apply this concentration limit automatically. Check the source rule.",
   concentration_contains_multiple_or_ambiguous_values: "The rule lists more than one possible concentration. Confirm which value applies.",

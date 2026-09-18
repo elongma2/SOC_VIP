@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from backend.app.config import load_settings, log_openai_configuration
 
 
@@ -9,6 +11,7 @@ def _clear_openai_environment(monkeypatch) -> None:
     for name in (
         "OPENAI_API_KEY",
         "OPENAI_AGENT_MODEL",
+        "OPENAI_AGENT_TIMEOUT_SECONDS",
         "OPENAI_EXPLANATION_MODEL",
         "OPENAI_MODEL",
         "FRONTEND_ORIGIN",
@@ -28,6 +31,7 @@ def test_repository_environment_file_is_loaded_with_role_specific_models(tmp_pat
     assert settings.api_key == "file-secret"
     assert settings.agent_model == "agent-from-file"
     assert settings.explanation_model == "explanation-from-file"
+    assert settings.agent_timeout_seconds == 180
 
 
 def test_operating_system_environment_wins(tmp_path, monkeypatch):
@@ -63,12 +67,30 @@ def test_missing_key_uses_safe_model_defaults_and_logs_no_secret(tmp_path, monke
     assert settings.api_key is None
     assert settings.agent_model == "gpt-5.6-sol"
     assert settings.explanation_model == "gpt-5.6-luna"
+    assert settings.agent_timeout_seconds == 180
     with caplog.at_level(logging.INFO):
         log_openai_configuration(settings)
     assert "Formulation Agent: not configured" in caplog.text
     assert "gpt-5.6-sol" in caplog.text
     assert "gpt-5.6-luna" in caplog.text
     assert "OPENAI_API_KEY" not in caplog.text
+
+
+def test_agent_timeout_can_be_extended_from_environment(tmp_path, monkeypatch):
+    _clear_openai_environment(monkeypatch)
+    monkeypatch.setenv("OPENAI_AGENT_TIMEOUT_SECONDS", "210")
+
+    settings = load_settings(tmp_path / "missing.env")
+
+    assert settings.agent_timeout_seconds == 210
+
+
+def test_agent_timeout_rejects_values_beyond_serverless_budget(tmp_path, monkeypatch):
+    _clear_openai_environment(monkeypatch)
+    monkeypatch.setenv("OPENAI_AGENT_TIMEOUT_SECONDS", "300")
+
+    with pytest.raises(ValueError, match="between 30 and 240"):
+        load_settings(tmp_path / "missing.env")
 
 
 def test_configured_log_never_contains_key(tmp_path, monkeypatch, caplog):

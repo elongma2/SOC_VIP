@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { optionsFixture, testResponse } from "./test/fixtures";
+import type { AgentPreparedFormulation, AgentSession } from "./types/agent";
 
 function jsonResponse(body: unknown, status = 200): Promise<Response> {
   return Promise.resolve({ ok: status >= 200 && status < 300, status, json: async () => body } as Response);
@@ -17,6 +18,61 @@ function mockSuccessfulApi() {
   });
 }
 
+const persistedAgentSession: AgentSession = {
+  session_id: "persisted-session",
+  revision: 1,
+  state: "interpreted",
+  filename: "persistent-demo.csv",
+  detected_table: { header_row: 1, data_start_row: 2, header_rows: [1], data_rows: [2], source_row_count: 1, source_column_count: 2, delimiter: "," },
+  column_mappings: [],
+  formulation_id: null,
+  formulation_name: null,
+  product_context: { value: null, source_value: null, source_row: 1, source_column: null, interpretation_method: "not_supplied", needs_confirmation: false, confirmed_by_user: true, source_references: [] },
+  interpreted_rows: [{
+    row_id: "row-2",
+    source_row: 2,
+    source_rows: [2],
+    source_cells: ["NIACINAMIDE", "5%"],
+    name: { value: "NIACINAMIDE", source_value: "NIACINAMIDE", source_row: 2, source_column: "Ingredient", interpretation_method: "exact_catalogue_match", needs_confirmation: false, confirmed_by_user: false, source_references: [] },
+    cas_number: null,
+    concentration: {
+      value: { value: 5, source_value: "5%", source_row: 2, source_column: "Concentration", interpretation_method: "deterministic_numeric_parse", needs_confirmation: false, confirmed_by_user: false, source_references: [] },
+      unit: { value: "percent", source_value: "5%", source_row: 2, source_column: "Concentration", interpretation_method: "deterministic_explicit_unit", needs_confirmation: false, confirmed_by_user: false, source_references: [] },
+      basis: { value: null, source_value: null, source_row: 2, source_column: null, interpretation_method: "not_supplied", needs_confirmation: false, confirmed_by_user: false, source_references: [] },
+      preparation_stage: { value: "finished_product", source_value: "finished_product", source_row: 2, source_column: "Stage", interpretation_method: "exact_source_value", needs_confirmation: false, confirmed_by_user: false, source_references: [] },
+    },
+    identity_status: "high_confidence",
+    identity_catalogue_id: "eu-niacinamide",
+    catalogue_identity: null,
+    source_metadata: [],
+    issues: [],
+    unresolved_fields: [],
+  }],
+  questions: [],
+  activity: [{ activity_id: "read", status: "complete", message: "Read 2 CSV rows" }],
+  canonical_formulation: null,
+  error: null,
+  model: "gpt-5.6-sol",
+  usage: null,
+  attempts: 0,
+  successful_attempt: null,
+  attempt_diagnostics: [],
+  total_usage: null,
+};
+
+function persistedPrepared(): AgentPreparedFormulation {
+  return {
+    session: { ...persistedAgentSession, revision: 2, state: "ready" },
+    formulation: {
+      formulation_id: null,
+      formulation_name: "Persistent formula",
+      product_context: null,
+      ingredients: [{ name: "NIACINAMIDE", cas_number: null, concentration: { value: 5, unit: "percent", basis: null, preparation_stage: "finished_product" } }],
+    },
+    row_provenance: persistedAgentSession.interpreted_rows,
+  };
+}
+
 describe("formula screening vertical slice", () => {
   beforeEach(() => vi.restoreAllMocks());
 
@@ -25,7 +81,10 @@ describe("formula screening vertical slice", () => {
     const user = userEvent.setup();
     render(<App />);
     expect(screen.getByText("Regulens")).toBeInTheDocument();
-    expect(screen.getByLabelText("Regulens inspection mark")).toBeInTheDocument();
+    const logo = screen.getByRole("img", { name: "Regulens logo" });
+    expect(logo).toBeInTheDocument();
+    expect(logo).toHaveAttribute("src", expect.stringContaining("regulens-logo-mark"));
+    expect(document.querySelector('svg[aria-label="Regulens inspection mark"]')).not.toBeInTheDocument();
     expect(screen.queryByText("AseanCos")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByText("History")).not.toBeInTheDocument();
@@ -36,6 +95,69 @@ describe("formula screening vertical slice", () => {
     expect(screen.queryByRole("combobox", { name: /Singapore/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Agent" }));
     expect(screen.getByRole("heading", { name: /Turn a formulation file into screening input/ })).toBeInTheDocument();
+  });
+
+  it("keeps Agent edits, prepared output, and screening results mounted across workflow navigation", async () => {
+    const prepared = persistedPrepared();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/screening-options")) return jsonResponse(optionsFixture);
+      if (url.endsWith("/agent/formulations")) return jsonResponse(persistedAgentSession, 201);
+      if (url.endsWith("/prepare")) return jsonResponse(prepared);
+      if (url.endsWith("/screen-formulation")) return jsonResponse(testResponse);
+      return jsonResponse({}, 404);
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    await user.upload(screen.getByLabelText("Choose formulation CSV"), new File(["Ingredient,Concentration\nNIACINAMIDE,5%"], "persistent-demo.csv", { type: "text/csv" }));
+    expect(await screen.findByText("Analysis complete")).toBeInTheDocument();
+    await user.clear(screen.getByLabelText("Row 2 interpreted name"));
+    await user.type(screen.getByLabelText("Row 2 interpreted name"), "NIACINAMIDE EDIT");
+    const agentView = document.querySelector<HTMLElement>('[data-view="agent"]')!;
+    const formulationName = within(agentView).getByText("Formulation name").closest("label")!.querySelector("input")!;
+    await user.type(formulationName, "Persistent formula");
+
+    await user.click(screen.getByRole("button", { name: "Sources" }));
+    expect(screen.getByRole("heading", { name: "ACD regulatory search" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    expect(screen.getByLabelText("Row 2 interpreted name")).toHaveValue("NIACINAMIDE EDIT");
+    expect(formulationName).toHaveValue("Persistent formula");
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/agent/formulations"))).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: "Prepare formulation" }));
+    expect(await screen.findByText("Formulation ready for screening")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Confirm & Screen/ }));
+    expect(await screen.findByText(/Imported by Formulation Agent/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "New Screen" }));
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    expect(screen.getByText(/Imported by Formulation Agent/)).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/screen-formulation"))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/screening-options"))).toHaveLength(2);
+  });
+
+  it("allows an Agent upload to finish while its workflow is hidden", async () => {
+    let resolveUpload!: (value: Response) => void;
+    const uploadPromise = new Promise<Response>((resolve) => { resolveUpload = resolve; });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+      if (url.endsWith("/screening-options")) return jsonResponse(optionsFixture);
+      if (url.endsWith("/agent/formulations")) return uploadPromise;
+      return jsonResponse({}, 404);
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    await user.upload(screen.getByLabelText("Choose formulation CSV"), new File(["Ingredient\nNIACINAMIDE"], "pending.csv", { type: "text/csv" }));
+    expect(screen.getByText("Interpreting formulation")).toBeInTheDocument();
+    expect(screen.getByText("Regulens is identifying the formulation structure and ingredient fields.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Sources" }));
+    resolveUpload({ ok: true, status: 201, json: async () => persistedAgentSession } as Response);
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/agent/formulations"))).toHaveLength(1));
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    expect(await screen.findByText("Analysis complete")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith("/agent/formulations"))).toHaveLength(1);
   });
 
   it("screens TEST-001 and renders row-based results from the API", async () => {

@@ -23,10 +23,22 @@ PROHIBITED_CLAIMS = re.compile(
     r"\b(?:allow(?:ed)?|permit(?:ted)?|approv(?:ed|al)?|compliant|compliance|legal|safe|unsafe|safety)\b",
     re.IGNORECASE,
 )
+PROHIBITED_JARGON = re.compile(
+    r"\b(?:conditional wording|cited entry|corroborated identity|identifier evidence|"
+    r"structure automatically|professional verification requested|applicable regulatory provision|"
+    r"exception conditions associated with the entry)\b",
+    re.IGNORECASE,
+)
 NUMBER_TOKEN = re.compile(r"\d+(?:\.\d+)?")
 
-EXPLANATION_INSTRUCTIONS = """You explain existing deterministic cosmetic screening review results in plain language.
-You do not perform regulatory analysis and you do not change the result. Use only facts supplied for each item. Do not infer missing facts, values, rules, or applicability. Explain why the existing software requested human review and what fact a professional should verify. Never say an ingredient or product is allowed, permitted, approved, compliant, legal, safe, or unsafe. Keep titles to eight words or fewer, summaries to one or two short sentences, and actions to one short sentence. submitted_fact and regulatory_fact must be copied exactly from the allowed fact fields or returned as null. Return only the strict structured output."""
+EXPLANATION_INSTRUCTIONS = """You rewrite an existing deterministic cosmetic screening review result in plain English.
+You do not perform regulatory analysis and you do not change the result, finding, or review requirement. Use only facts supplied for each item. Do not infer missing facts, values, thresholds, identities, rules, or applicability.
+
+Write for a cosmetic compliance user who is not a software engineer. Use short sentences, simple words, and direct phrasing. The summary must say what Regulens already knows and what is still unknown. what_to_check must give one concrete action, normally beginning with "Check" or "Confirm". For example, say "This rule has an exception" rather than "conditional wording needs review", and say "The name and CAS do not match" rather than "identifier evidence needs review".
+
+Do not use these phrases: conditional wording, cited entry, corroborated identity, identifier evidence, structure automatically, professional verification requested, applicable regulatory provision, or exception conditions associated with the entry. Never say an ingredient or product is allowed, permitted, approved, compliant, legal, safe, or unsafe.
+
+Keep titles to eight words or fewer, summaries to one or two short sentences, and actions to one short sentence. submitted_fact and regulatory_fact must be copied exactly from the allowed fact fields or returned as null. Return only the strict structured output."""
 
 
 class _ExplanationItem(StrictModel):
@@ -54,7 +66,29 @@ def _stage_label(stage: str | None) -> str | None:
     }.get(stage or "")
 
 
+def _identity_submitted_fact(result) -> str | None:
+    submitted = result.submitted_ingredient
+    parts = []
+    if submitted.name:
+        parts.append(f"Name: {submitted.name}")
+    if submitted.cas_number:
+        parts.append(f"CAS: {submitted.cas_number}")
+    return " · ".join(parts) or None
+
+
+def _source_identity_fact(result) -> str | None:
+    submitted_name = result.submitted_ingredient.name
+    if not submitted_name:
+        return None
+    for candidate in [*result.identity.singapore_candidates, *result.identity.acd_candidates]:
+        if "exact_name" in candidate.match_methods and candidate.cas_numbers:
+            return f"Source CAS for {submitted_name}: {', '.join(candidate.cas_numbers)}"
+    return None
+
+
 def _submitted_fact(result) -> str | None:
+    if ReviewType.IDENTITY in result.review_types:
+        return _identity_submitted_fact(result)
     concentration = result.submitted_ingredient.concentration
     if concentration is None:
         return None
@@ -65,6 +99,8 @@ def _submitted_fact(result) -> str | None:
 
 
 def _regulatory_fact(result) -> str | None:
+    if ReviewType.IDENTITY in result.review_types:
+        return _source_identity_fact(result)
     for evaluation in result.rule_evaluations:
         concentration = evaluation.evidence.concentration
         if concentration and isinstance(concentration.get("value"), (int, float)):
@@ -87,45 +123,85 @@ def fallback_explanation(result) -> ReviewExplanation:
     submitted = _submitted_fact(result)
     regulatory = _regulatory_fact(result)
     if ReviewType.IDENTITY in result.review_types:
+        if (
+            "resolve_to_different" in reasons
+            or "only_one_supplied_identifier" in reasons
+            or "do_not_establish_a_unique" in reasons
+        ):
+            return ReviewExplanation(
+                title="Name and CAS do not match",
+                summary="The ingredient name and CAS number do not point to the same ingredient.",
+                what_to_check="Confirm the correct ingredient name and CAS number.",
+                submitted_fact=submitted,
+                regulatory_fact=regulatory,
+                source="deterministic_fallback",
+            )
         return ReviewExplanation(
             title="Ingredient identity needs confirmation",
-            summary="The submitted details do not point to one clear source-backed ingredient.",
-            what_to_check="Confirm the ingredient name and CAS number against the formulation records.",
+            summary="The ingredient name and CAS information do not clearly point to one source-backed ingredient.",
+            what_to_check="Confirm the correct INCI or common name and CAS number.",
             submitted_fact=submitted,
             regulatory_fact=regulatory,
             source="deterministic_fallback",
         )
     if "preparation_stage" in reasons or "preparation stage" in reasons:
         return ReviewExplanation(
-            title="Preparation stage needs review",
-            summary="The submitted concentration and rule refer to different preparation stages, so they cannot be compared directly.",
-            what_to_check="Confirm the concentration at the preparation stage specified by the rule.",
+            title="Concentration stage needs confirmation",
+            summary="The submitted concentration is for one stage, but the rule applies at a different stage.",
+            what_to_check="Confirm the concentration at the stage stated in the rule.",
+            submitted_fact=submitted,
+            regulatory_fact=regulatory,
+            source="deterministic_fallback",
+        )
+    if "product context" in reasons or "product_context" in reasons:
+        return ReviewExplanation(
+            title="Product information is needed",
+            summary="More product information is needed before this rule can be checked.",
+            what_to_check="Confirm the product type or context stated in the rule.",
+            submitted_fact=submitted,
+            regulatory_fact=regulatory,
+            source="deterministic_fallback",
+        )
+    if "incompatible" in reasons and "unit" in reasons:
+        return ReviewExplanation(
+            title="Concentration unit needs confirmation",
+            summary="The submitted concentration and the rule use different units.",
+            what_to_check="Confirm the concentration using the unit stated in the rule.",
+            submitted_fact=submitted,
+            regulatory_fact=regulatory,
+            source="deterministic_fallback",
+        )
+    if "incompatible" in reasons and "basis" in reasons:
+        return ReviewExplanation(
+            title="Concentration basis needs confirmation",
+            summary="The submitted concentration and the rule use different concentration bases.",
+            what_to_check="Confirm the concentration using the basis stated in the rule.",
             submitted_fact=submitted,
             regulatory_fact=regulatory,
             source="deterministic_fallback",
         )
     if "conditional" in reasons or "condition" in reasons or "exception" in reasons:
         return ReviewExplanation(
-            title="Rule conditions need review",
-            summary="The source rule contains a condition or exception that Regulens does not evaluate automatically.",
-            what_to_check="Compare the source condition with the submitted formulation.",
+            title="Rule exception needs confirmation",
+            summary="This rule has an exception that still needs checking.",
+            what_to_check="Check whether the exception shown in the regulatory source applies to this formulation.",
             submitted_fact=submitted,
             regulatory_fact=regulatory,
             source="deterministic_fallback",
         )
     if "concentration" in reasons or "information" in reasons or "missing" in reasons:
         return ReviewExplanation(
-            title="More formulation details are needed",
-            summary="The submitted information is not enough for the existing rule to be evaluated automatically.",
-            what_to_check="Confirm the missing concentration or product details shown in the source rule.",
+            title="More product information is needed",
+            summary="Regulens needs more product information before it can check this rule.",
+            what_to_check="Confirm the missing concentration or product details shown in the rule.",
             submitted_fact=submitted,
             regulatory_fact=regulatory,
             source="deterministic_fallback",
         )
     return ReviewExplanation(
-        title="Rule application needs review",
-        summary="The structured rule cannot be applied automatically to the submitted information.",
-        what_to_check="Review the cited rule and the submitted formulation details together.",
+        title="This rule needs confirmation",
+        summary="Regulens found a rule but could not confirm how it applies to this formulation.",
+        what_to_check="Check the rule details against the submitted formulation.",
         submitted_fact=submitted,
         regulatory_fact=regulatory,
         source="deterministic_fallback",
@@ -322,6 +398,8 @@ class ReviewExplanationService:
         combined = " ".join(filter(None, [item.title, item.summary, item.what_to_check, item.submitted_fact, item.regulatory_fact]))
         if PROHIBITED_CLAIMS.search(combined):
             raise ValueError("Explanation contains a prohibited conclusion")
+        if PROHIBITED_JARGON.search(combined):
+            raise ValueError("Explanation contains technical review jargon")
         if item.submitted_fact not in {None, payload["allowed_submitted_fact"]}:
             raise ValueError("Explanation changed the submitted fact")
         if item.regulatory_fact not in {None, payload["allowed_regulatory_fact"]}:
@@ -334,6 +412,7 @@ class ReviewExplanationService:
     def _cache_key(self, payload: dict[str, Any]) -> str:
         cache_payload = {
             "model": self.model,
+            "explanation_contract": hashlib.sha256(EXPLANATION_INSTRUCTIONS.encode("utf-8")).hexdigest(),
             **{key: value for key, value in payload.items() if key != "item_id"},
         }
         return hashlib.sha256(

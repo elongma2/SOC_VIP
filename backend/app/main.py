@@ -76,7 +76,10 @@ def create_app(
                 application.state.formulation_agent = FormulationAgentService(
                     application.state.regulatory_store,
                     application.state.ingredient_catalog,
-                    model_runner=OpenAIFormulationInterpreter(api_key=settings.api_key),
+                    model_runner=OpenAIFormulationInterpreter(
+                        api_key=settings.api_key,
+                        timeout_seconds=settings.agent_timeout_seconds,
+                    ),
                     model=settings.agent_model,
                 )
             else:

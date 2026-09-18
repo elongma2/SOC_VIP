@@ -61,6 +61,7 @@ Set these variables on the **backend project** for Production, and separately fo
 ```text
 OPENAI_API_KEY=<server-side secret>
 OPENAI_AGENT_MODEL=gpt-5.6-sol
+OPENAI_AGENT_TIMEOUT_SECONDS=180
 OPENAI_EXPLANATION_MODEL=gpt-5.6-luna
 FRONTEND_ORIGIN=https://<frontend-project-domain>
 ```
@@ -104,10 +105,11 @@ The **Agent** tab accepts CSV formulations, interprets the table into the existi
 ```dotenv
 OPENAI_API_KEY=your-key
 OPENAI_AGENT_MODEL=gpt-5.6-sol
+OPENAI_AGENT_TIMEOUT_SECONDS=180
 OPENAI_EXPLANATION_MODEL=gpt-5.6-luna
 ```
 
-`OPENAI_AGENT_MODEL` defaults to `gpt-5.6-sol`. The legacy `OPENAI_MODEL` remains an Agent-only fallback. `OPENAI_EXPLANATION_MODEL` defaults independently to `gpt-5.6-luna`. If the key or Agent model is unavailable, the parsed in-memory session is retained and the Agent page offers Retry; New Screen and established deterministic screening remain usable. Startup logs report only whether OpenAI is configured and the two selected model names; the key is never logged.
+`OPENAI_AGENT_MODEL` defaults to `gpt-5.6-sol`. The legacy `OPENAI_MODEL` remains an Agent-only fallback. `OPENAI_AGENT_TIMEOUT_SECONDS` defaults to 180 seconds and accepts 30–240 seconds; this gives larger structured Sol responses time to finish before the application starts a fresh attempt while remaining below the 300-second Vercel function ceiling. `OPENAI_EXPLANATION_MODEL` defaults independently to `gpt-5.6-luna`. If the key or Agent model is unavailable, the parsed in-memory session is retained and the Agent page offers Retry; New Screen and established deterministic screening remain usable. Startup logs report only whether OpenAI is configured, the request timeout, and the two selected model names; the key is never logged.
 
 The Agent API is:
 
@@ -118,6 +120,8 @@ The Agent API is:
 - `POST /agent/formulations/{session_id}/retry` — retry a recoverable interpretation failure.
 
 CSV input is limited to 2 MiB, 500 logical rows, 50 columns, 8,192 characters per cell, and UTF-8 or BOM-identified UTF-16 text. Sessions are memory-only, expire after 60 minutes of inactivity, and disappear when the API process restarts. Uploaded bytes are discarded after local parsing. Local code only decodes the file, detects the delimiter, enforces bounds, and preserves exact numbered cells. It does not assume the first row is a header or that a particular column name or order is required. The complete bounded grid is sent to the Responses API with response storage disabled; accepted PDFs, regulatory databases, filesystem paths, and API keys are never included.
+
+Clarifications identify the affected source row, ingredient, field, and original value. The editable interpretation row and its clarification card share the same backend row state: text edits save on blur, selectors save immediately, and resolving either surface updates the other. Missing concentration units are handled per row. An unchanged unmatched identity is shown as unresolved instead of being presented as a recommendation; only an exact accepted catalogue candidate is labelled as a source-backed match.
 
 The Agent model identifies headers, formulation rows, column meanings, explicit formulation metadata, and logical ingredients. A logical ingredient may cite exact cells from more than one source row. Every proposed field retains its cell references, and the backend rejects missing rows, impossible coordinates, changed source values, duplicate logical IDs, or ungrounded values. One bounded semantic repair is allowed before the session fails recoverably. Non-exact identity changes, assumed units, non-numeric values such as `QS` or `balance`, and a missing preparation stage remain under user control. **Confirm & Screen** sends the accepted canonical JSON to the existing deterministic `/screen-formulation` endpoint. The model has no screening tool and cannot generate regulatory findings or limits.
 

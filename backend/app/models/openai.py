@@ -14,3 +14,4 @@ class OpenAIUsage(StrictModel):
     tool_calls: int = Field(default=0, ge=0)
     request_rounds: int = Field(default=0, ge=0)
     cache_hits: int = Field(default=0, ge=0)
+    response_ids: list[str] = Field(default_factory=list)

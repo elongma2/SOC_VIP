@@ -11,9 +11,9 @@ function reviewResult(source: "model" | "deterministic_fallback" = "model") {
   result.review_types = ["rule_review"];
   result.review_reasons = ["incompatible_preparation_stage"];
   result.review_explanation = {
-    title: "Preparation stage needs review",
-    summary: "The submitted concentration and rule refer to different preparation stages, so they cannot be compared directly.",
-    what_to_check: "Confirm the concentration at the preparation stage specified by the rule.",
+    title: "Concentration stage needs confirmation",
+    summary: "The submitted concentration is for one stage, but the rule applies at a different stage.",
+    what_to_check: "Confirm the concentration at the stage stated in the rule.",
     submitted_fact: "2% · Finished product",
     regulatory_fact: "Maximum 2% · After mixing for use",
     source,
@@ -49,7 +49,9 @@ describe("review guidance", () => {
       }}
       onClose={vi.fn()}
     />);
-    expect(screen.getByText("Preparation stage needs review")).toBeInTheDocument();
+    expect(screen.getByText("Concentration stage needs confirmation")).toBeInTheDocument();
+    expect(screen.getByText("The submitted concentration is for one stage, but the rule applies at a different stage.")).toBeInTheDocument();
+    expect(screen.getByText("Confirm the concentration at the stage stated in the rule.")).toBeInTheDocument();
     expect(screen.getByText("2% · Finished product")).toBeInTheDocument();
     expect(screen.getByText("Maximum 2% · After mixing for use")).toBeInTheDocument();
     const technical = screen.getByText("Technical provenance").closest("details");
@@ -63,8 +65,24 @@ describe("review guidance", () => {
   it("labels deterministic fallback without weakening the review", async () => {
     const user = userEvent.setup();
     render(<EvidenceDrawer result={reviewResult("deterministic_fallback")} sources={[]} onClose={vi.fn()} />);
-    expect(screen.getByText("Preparation stage needs review")).toBeInTheDocument();
+    expect(screen.getByText("Concentration stage needs confirmation")).toBeInTheDocument();
     await user.click(screen.getByText("Technical provenance"));
     expect(screen.getByText("Deterministic fallback")).toBeInTheDocument();
+  });
+
+  it("labels an identity fact as source information", () => {
+    const result = reviewResult("deterministic_fallback");
+    result.review_types = ["identity_review"];
+    result.review_explanation = {
+      title: "Name and CAS do not match",
+      summary: "The ingredient name and CAS number do not point to the same ingredient.",
+      what_to_check: "Confirm the correct ingredient name and CAS number.",
+      submitted_fact: "Name: Aminophylline · CAS: 128-37-0",
+      regulatory_fact: "Source CAS for Aminophylline: 317-34-0",
+      source: "deterministic_fallback",
+    };
+    render(<EvidenceDrawer result={result} sources={[]} onClose={vi.fn()} />);
+    expect(screen.getByText("Source")).toBeInTheDocument();
+    expect(screen.getByText("Source CAS for Aminophylline: 317-34-0")).toBeInTheDocument();
   });
 });
