@@ -164,6 +164,58 @@ function keptSourceIdentitySession(): AgentSession {
   };
 }
 
+function manuallyEditedIdentitySession(): AgentSession {
+  const session = identitySession();
+  const editedName = "Corrected supplier identity";
+  return {
+    ...session,
+    revision: 8,
+    interpreted_rows: [{
+      ...session.interpreted_rows[0],
+      name: {
+        ...session.interpreted_rows[0].name,
+        value: editedName,
+        needs_confirmation: true,
+        confirmed_by_user: false,
+        interpretation_method: "user_edited",
+      },
+      identity_status: "unresolved",
+      identity_catalogue_id: null,
+      catalogue_identity: null,
+      unresolved_fields: [{ target_field: "ingredient_name", uncertainty_code: "ingredient_identity", source_value: "Glycerine", proposed_value: null }],
+    }],
+    questions: [{
+      question_id: "identity:row-10", question_type: "identity", title: "Ingredient identity",
+      prompt: "Confirm the entered ingredient name or return to the source value.", source_row: 10, row_id: "row-10",
+      target_field: "ingredient_name", uncertainty_code: "ingredient_identity", affected_row_ids: ["row-10"], blocking: true,
+      options: [
+        { option_id: "confirm_entered", label: "Confirm entered name", value: editedName },
+        { option_id: "keep_source", label: "Keep source value", value: "Glycerine" },
+      ],
+    }],
+  };
+}
+
+function confirmedManualIdentitySession(): AgentSession {
+  const session = manuallyEditedIdentitySession();
+  return {
+    ...session,
+    revision: 9,
+    state: "interpreted",
+    questions: [],
+    interpreted_rows: [{
+      ...session.interpreted_rows[0],
+      name: {
+        ...session.interpreted_rows[0].name,
+        needs_confirmation: false,
+        confirmed_by_user: true,
+        interpretation_method: "user_confirmed_entered_identity",
+      },
+      unresolved_fields: [],
+    }],
+  };
+}
+
 describe("Formulation Agent page", () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -283,6 +335,40 @@ describe("Formulation Agent page", () => {
     expect(screen.queryByRole("button", { name: "Unresolved" })).not.toBeInTheDocument();
     expect(screen.queryByText("Possible source-backed match")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Row 10 concentration")).toHaveValue("");
+  });
+
+  it("allows an edited unmatched ingredient name to be confirmed", async () => {
+    let answerCount = 0;
+    const answerBodies: Record<string, unknown>[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = String(input);
+      if (url.endsWith("/screening-options")) return json(optionsFixture);
+      if (url.endsWith("/agent/formulations")) return json(identitySession(), 201);
+      if (url.endsWith("/answers")) {
+        answerBodies.push(JSON.parse(String(init?.body)));
+        answerCount += 1;
+        return json(answerCount === 1 ? manuallyEditedIdentitySession() : confirmedManualIdentitySession());
+      }
+      return json({}, 404);
+    });
+    const user = userEvent.setup();
+    render(<AgentPage />);
+    await user.upload(screen.getByLabelText("Choose formulation CSV"), new File(["INCI\nGlycerine"], "identity.csv", { type: "text/csv" }));
+    const name = await screen.findByLabelText("Row 10 interpreted name");
+    await user.clear(name);
+    await user.type(name, "Corrected supplier identity");
+    await user.tab();
+
+    expect(await screen.findByText("Entered name")).toBeInTheDocument();
+    expect(screen.getByText("Corrected supplier identity")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Confirm entered name" }));
+
+    expect(await screen.findByRole("button", { name: "Resolved" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Row 10 interpreted name")).toHaveValue("Corrected supplier identity");
+    expect(answerBodies.some((body) => {
+      const answers = body.answers as Array<{ question_id: string; option_id: string }> | undefined;
+      return answers?.some((answer) => answer.question_id === "identity:row-10" && answer.option_id === "confirm_entered");
+    })).toBe(true);
   });
 
   it("starts a new CSV and clears the current in-memory workflow", async () => {

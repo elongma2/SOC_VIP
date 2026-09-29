@@ -315,6 +315,41 @@ def test_direct_exact_identity_edit_resolves_identity_question(store, catalogue)
     assert not any(question.question_type == "identity" for question in updated.questions)
 
 
+def test_direct_unmatched_identity_edit_can_be_explicitly_confirmed(store, catalogue):
+    def unresolved_runner(parsed, accepted_store, accepted_catalogue, model):
+        return interpretation([{
+            "source_row": 2, "source_name": "Wrong supplier name", "interpreted_name": "Wrong supplier name",
+            "identity_status": "unresolved", "source_cas": None, "source_concentration": None,
+            "concentration_value": None, "concentration_unit": None, "issues": [],
+        }])
+
+    service = FormulationAgentService(store, catalogue, model_runner=unresolved_runner)
+    session = service.create(parse_csv_upload("identity.csv", b"INCI,Amount\nWrong supplier name,\n"))
+    row = session.interpreted_rows[0]
+    edited = service.apply_answers(session.session_id, AgentAnswersRequest(
+        revision=session.revision,
+        row_updates=[AgentRowUpdate(row_id=row.row_id, name="Corrected supplier identity")],
+    ))
+
+    question = next(question for question in edited.questions if question.question_type == "identity")
+    assert [(option.option_id, option.value) for option in question.options] == [
+        ("confirm_entered", "Corrected supplier identity"),
+        ("keep_source", "Wrong supplier name"),
+    ]
+    assert question.prompt == "Confirm the entered ingredient name or return to the source value."
+
+    confirmed = service.apply_answers(session.session_id, AgentAnswersRequest(
+        revision=edited.revision,
+        answers=[AgentAnswer(question_id=question.question_id, option_id="confirm_entered")],
+    ))
+    confirmed_row = confirmed.interpreted_rows[0]
+    assert confirmed_row.name.value == "Corrected supplier identity"
+    assert confirmed_row.name.confirmed_by_user is True
+    assert confirmed_row.name.interpretation_method == "user_confirmed_entered_identity"
+    assert confirmed_row.identity_status == "unresolved"
+    assert not any(item.question_type == "identity" for item in confirmed.questions)
+
+
 def test_optional_source_metadata_is_preserved_and_inci_is_the_identity_field(store, catalogue):
     def metadata_runner(parsed, accepted_store, accepted_catalogue, model):
         return interpretation(

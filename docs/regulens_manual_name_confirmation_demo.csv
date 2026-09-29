@@ -1,0 +1,19 @@
+Document Label,,Regulens manual ingredient-name confirmation test,,,,,,
+FORMULA CODE,,NAME-CONFIRM-001,,,,,,
+FORMULA NAME,,Manual ingredient edit and confirmation,,,,,,
+Product Type,,Toothpaste,,,,,,
+Concentrations refer to,,finished_product,,,,,,
+Owner / source,,Demo lab export,,,,,,
+,,,,,,,,
+Seq / phase,RM / trade name,INCI / Ingredient,CAS ref,Target dose,UOM,When measured,Supplier note,Test note
+01-ACT,B3 Active,NIACINAMIDE,,5,%,finished_product,Supplier declaration available,Exact-name control row
+02-HUM,Humectant Base,Glycerine,,4,%,finished_product,Spelling copied from worksheet,Spelling variant for identity review
+03-ACT,Brightening Blend,Vitamin Bright X,,2.0,%,finished_product,Trade description only,Deliberately incorrect ingredient name
+04-ACT,Botanical Blend,Supplier Active 42,,1.2,%,finished_product,Supplier has not provided an INCI,Manual free-text correction test
+05-PRES,Preservative Base,Tosyl chl Na,,0.10,%,finished_product,Abbreviation from transfer sheet,Unresolved abbreviation test
+06-UNK,Secret Blend,Mystery Extract,,0.25,%,finished_product,Identity not disclosed,Unchanged unresolved identity test
+07-ACT,Pro-Vitamin B5,PANTHENOL,,1.5,,finished_product,Unit missing in export,Missing-unit clarification test
+08-WTR,Water Phase,AQUA,,balance,,finished_product,Added to final batch weight,Nonnumeric concentration test
+09-SENS,Fragrance Base,PARFUM,,QS,,finished_product,Vendor composition withheld,Nonnumeric concentration test
+10-CTX,Oxidiser Salt,Chlorates of alkali metals,,4,%,finished_product,Toothpaste use,Product-context screening control
+11-PROH,Theophylline Blend,Aminophylline,317-34-0,,,finished_product,Legacy raw material,Name-and-CAS control row

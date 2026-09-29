@@ -1169,7 +1169,11 @@ class FormulationAgentService:
             row.name.value = selected
             row.name.needs_confirmation = False
             row.name.confirmed_by_user = True
-            row.name.interpretation_method = "user_confirmed_identity" if option_id == "confirm_candidate" else "user_kept_source_value"
+            row.name.interpretation_method = {
+                "confirm_candidate": "user_confirmed_identity",
+                "confirm_entered": "user_confirmed_entered_identity",
+                "keep_source": "user_kept_source_value",
+            }[option_id]
             exact = self.catalogue.find_exact_name(selected) if self.catalogue else None
             row.identity_status = AgentConfidence.CONFIRMED if exact else AgentConfidence.UNRESOLVED
             row.identity_catalogue_id = exact["ingredient_id"] if exact else None
@@ -1286,13 +1290,30 @@ class FormulationAgentService:
                     options = [AgentQuestionOption(option_id="keep_source", label="Keep source value", value=uncertainty.source_value)]
                     if candidate is not None:
                         options.insert(0, AgentQuestionOption(option_id="confirm_candidate", label=f"Use {candidate}", value=candidate))
+                    current_value = str(row.name.value or "").strip()
+                    source_value = str(uncertainty.source_value or "").strip()
+                    candidate_value = str(candidate or "").strip()
+                    if (
+                        current_value
+                        and self._exact_text(current_value) != self._exact_text(source_value)
+                        and self._exact_text(current_value) != self._exact_text(candidate_value)
+                    ):
+                        options.insert(0, AgentQuestionOption(
+                            option_id="confirm_entered",
+                            label="Confirm entered name",
+                            value=current_value,
+                        ))
                     questions.append(AgentQuestion(
                         question_id=f"identity:{row.row_id}",
                         question_type="identity",
                         title="Ingredient identity",
                         prompt=(
                             f'Possible source-backed match: "{candidate}".' if candidate is not None
-                            else "Regulens could not find a source-backed identity match."
+                            else (
+                                "Confirm the entered ingredient name or return to the source value."
+                                if any(option.option_id == "confirm_entered" for option in options)
+                                else "Regulens could not find a source-backed identity match."
+                            )
                         ),
                         source_row=row.source_row,
                         row_id=row.row_id,

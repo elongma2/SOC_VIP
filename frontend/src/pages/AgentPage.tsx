@@ -97,6 +97,10 @@ export function AgentPage() {
 
   const saveRow = async (rowId: string, draft: RowDraft, field: "name" | "cas" | "concentration") => {
     if (!session || busy) return;
+    const currentRow = session.interpreted_rows.find((row) => row.row_id === rowId);
+    if (!currentRow) return;
+    if (field === "name" && draft.name.trim() === String(currentRow.name.value ?? "").trim() && !currentRow.name.needs_confirmation) return;
+    if (field === "cas" && optional(draft.cas) === (currentRow.cas_number?.value ?? null)) return;
     const update = field === "name"
       ? { row_id: rowId, name: draft.name }
       : field === "cas"
@@ -340,11 +344,12 @@ export function AgentPage() {
                 <div className="agent-question-grid">{clarificationQuestions.map((question) => {
                   const row = question.row_id ? session.interpreted_rows.find((item) => item.row_id === question.row_id) : null;
                   const candidate = question.question_type === "identity" ? question.options.find((option) => option.option_id === "confirm_candidate") : null;
+                  const enteredName = question.question_type === "identity" ? question.options.find((option) => option.option_id === "confirm_entered") : null;
                   return (
                   <article id={`agent-question-${question.question_id}`} className={`agent-question ${highlightedQuestion === question.question_id ? "agent-target-highlight" : ""}`} key={question.question_id}>
                     {row && <div className="agent-question-row"><strong>Row {row.source_row} · {row.name.source_value ?? row.name.value}</strong><button type="button" onClick={() => focusRow(row.row_id, question.target_field)}>View row</button></div>}
                     <h3>{question.title}</h3>
-                    {question.question_type === "identity" && row ? <div className="agent-question-facts"><span>Submitted</span><strong>{row.name.source_value}</strong>{candidate && <><span>Possible source-backed match</span><strong>{String(candidate.value)}</strong><span>Source</span><strong>{row.catalogue_identity?.source_name ?? "EU Common Ingredient Glossary"}</strong></>}</div> : <p>{question.prompt}</p>}
+                    {question.question_type === "identity" && row ? <div className="agent-question-facts"><span>Submitted</span><strong>{row.name.source_value}</strong>{enteredName && <><span>Entered name</span><strong>{String(enteredName.value)}</strong></>}{candidate && <><span>Possible source-backed match</span><strong>{String(candidate.value)}</strong><span>Source</span><strong>{row.catalogue_identity?.source_name ?? "EU Common Ingredient Glossary"}</strong></>}</div> : <p>{question.prompt}</p>}
                     {question.question_type === "preparation_stage" && <ul className="agent-question-rows">{question.affected_row_ids.map((rowId) => { const affected = session.interpreted_rows.find((item) => item.row_id === rowId); return affected ? <li key={rowId}><span>Row {affected.source_row} · {affected.name.source_value ?? affected.name.value}</span><button type="button" onClick={() => focusRow(rowId, "preparation_stage")}>View row</button></li> : null; })}</ul>}
                     {question.question_type === "non_numeric_concentration" && (() => {
                       const manual = manualValues[question.question_id] ?? { value: "", unit: "percent" as ConcentrationUnit, stage: "finished_product" as PreparationStage };
