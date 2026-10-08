@@ -3,12 +3,17 @@ from __future__ import annotations
 import csv
 import io
 import json
+from datetime import date, datetime, time
 from dataclasses import dataclass
 from pathlib import Path
+from zipfile import BadZipFile
 
 import openpyxl
 import xlrd
+from openpyxl.utils.exceptions import InvalidFileException
 from pypdf import PdfReader
+from pypdf.errors import PdfReadError
+from xlrd.biffh import XLRDError
 
 
 MAX_FILE_BYTES = 2 * 1024 * 1024
@@ -52,16 +57,31 @@ def parse_formulation_upload(filename: str, content: bytes) -> ParsedCSV:
     if suffix not in {".csv", ".tsv", ".txt", ".xlsx", ".xls", ".json", ".pdf"}:
         raise CSVUploadError("agent_csv_type_unsupported", "Supported formulation files: .csv, .tsv, .txt, .xlsx, .xls, .json, and .pdf")
     if not content:
-        raise CSVUploadError("agent_csv_empty", "The uploaded CSV is empty")
+        raise CSVUploadError("agent_csv_empty", "The uploaded file is empty")
     if len(content) > MAX_FILE_BYTES:
-        raise CSVUploadError("agent_csv_too_large", "CSV files are limited to 2 MiB", 413)
+        raise CSVUploadError("agent_csv_too_large", "Formulation files are limited to 2 MiB", 413)
     if suffix == ".xlsx":
-        workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-        rows = [tuple("" if value is None else str(value) for value in row) for row in next(iter(workbook.worksheets)).iter_rows(values_only=True)]
+        try:
+            workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+            if not workbook.worksheets:
+                raise CSVUploadError("agent_csv_empty", "The uploaded workbook contains no worksheets")
+            rows = [tuple(_cell_text(value) for value in row) for row in workbook.worksheets[0].iter_rows(values_only=True)]
+        except CSVUploadError:
+            raise
+        except (BadZipFile, InvalidFileException, KeyError, OSError, ValueError) as error:
+            raise CSVUploadError("agent_csv_malformed", "The XLSX workbook could not be read") from error
         return _validate_rows(safe_name, rows, "\t")
     if suffix == ".xls":
-        sheet = xlrd.open_workbook(file_contents=content, on_demand=True).sheet_by_index(0)
-        rows = [tuple(str(value) for value in sheet.row_values(index)) for index in range(sheet.nrows)]
+        try:
+            workbook = xlrd.open_workbook(file_contents=content, on_demand=True)
+            if workbook.nsheets == 0:
+                raise CSVUploadError("agent_csv_empty", "The uploaded workbook contains no worksheets")
+            sheet = workbook.sheet_by_index(0)
+            rows = [tuple(_cell_text(value) for value in sheet.row_values(index)) for index in range(sheet.nrows)]
+        except CSVUploadError:
+            raise
+        except (XLRDError, IndexError, OSError, ValueError) as error:
+            raise CSVUploadError("agent_csv_malformed", "The XLS workbook could not be read") from error
         return _validate_rows(safe_name, rows, "\t")
     if suffix == ".json":
         try:
@@ -71,10 +91,17 @@ def parse_formulation_upload(filename: str, content: bytes) -> ParsedCSV:
             raise CSVUploadError("agent_csv_malformed", "JSON could not be parsed") from error
         if not isinstance(records, list):
             raise CSVUploadError("agent_csv_malformed", "JSON must contain an array of rows or an object with a rows array")
-        rows = [tuple(str(value) if value is not None else "" for value in row) for row in records if isinstance(row, list)]
+        if not all(isinstance(row, list) for row in records):
+            raise CSVUploadError("agent_csv_malformed", "Every JSON row must be an array of cell values")
+        rows = [tuple(_cell_text(value) for value in row) for row in records]
         return _validate_rows(safe_name, rows, "\t")
     if suffix == ".pdf":
-        text = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(content)).pages)
+        try:
+            text = "\n".join(page.extract_text() or "" for page in PdfReader(io.BytesIO(content)).pages)
+        except (PdfReadError, OSError, ValueError) as error:
+            raise CSVUploadError("agent_csv_malformed", "The PDF could not be read") from error
+        if len(text) > MAX_DECODED_CHARACTERS:
+            raise CSVUploadError("agent_csv_too_large", "Extracted PDF text exceeds 250,000 characters", 413)
     else:
         text = _decode_csv(content)
     if not text.strip():
@@ -103,7 +130,19 @@ def _validate_rows(filename: str, rows: list[tuple[str, ...]], delimiter: str) -
         raise CSVUploadError("agent_csv_empty", "The uploaded file contains no data")
     if len(rows) > MAX_ROWS or max(len(row) for row in rows) > MAX_COLUMNS:
         raise CSVUploadError("agent_csv_shape_invalid", "The uploaded file exceeds the row or column limits")
+    if any(len(cell) > MAX_CELL_CHARACTERS for row in rows for cell in row):
+        raise CSVUploadError("agent_csv_cell_too_large", f"Cells are limited to {MAX_CELL_CHARACTERS} characters")
     return ParsedCSV(filename=filename, delimiter=delimiter, rows=tuple(rows))
+
+
+def _cell_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    return str(value)
 
 
 parse_csv_upload = parse_formulation_upload

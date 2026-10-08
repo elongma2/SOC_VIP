@@ -387,8 +387,8 @@ describe("Formulation Agent page", () => {
     await user.upload(screen.getByLabelText("Choose formulation CSV"), new File(["INCI\nNIACINAMIDE"], "first.csv", { type: "text/csv" }));
     expect(await screen.findByText("first.csv")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Start new CSV" }));
-    expect(screen.getByText("Drop formulation CSV here")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Start new file" }));
+    expect(screen.getByText("Drop formulation file here")).toBeInTheDocument();
     expect(screen.queryByText("first.csv")).not.toBeInTheDocument();
     await user.upload(screen.getByLabelText("Choose formulation CSV"), new File(["INCI\nGLYCERIN"], "second.csv", { type: "text/csv" }));
     expect(await screen.findByText("second.csv")).toBeInTheDocument();

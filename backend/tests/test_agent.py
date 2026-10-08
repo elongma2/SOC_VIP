@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from types import SimpleNamespace
 import json
 
+import openpyxl
 import pytest
 from fastapi.testclient import TestClient
 
@@ -140,6 +142,58 @@ def test_csv_parser_rejects_invalid_files():
         parse_csv_upload("formula.docx", b"a,b")
     with pytest.raises(CSVUploadError, match="empty"):
         parse_csv_upload("formula.csv", b"")
+
+
+def _xlsx_upload(rows: list[list[object]]) -> bytes:
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    for row in rows:
+        sheet.append(row)
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def test_formulation_parser_accepts_xlsx_and_json_grids():
+    xlsx = parse_csv_upload(
+        "formula.xlsx",
+        _xlsx_upload([["INCI", "Concentration"], ["NIACINAMIDE", "5%"]]),
+    )
+    assert xlsx.rows == (("INCI", "Concentration"), ("NIACINAMIDE", "5%"))
+    assert xlsx.filename == "formula.xlsx"
+
+    json_grid = parse_csv_upload(
+        "formula.json",
+        json.dumps({"rows": [["INCI", "Concentration"], ["GLYCERIN", "4%"]]}).encode(),
+    )
+    assert json_grid.rows[1] == ("GLYCERIN", "4%")
+
+
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    [("broken.xlsx", b"not an xlsx"), ("broken.xls", b"not an xls"), ("broken.pdf", b"not a pdf")],
+)
+def test_binary_formulation_parser_returns_bounded_errors(filename, content):
+    with pytest.raises(CSVUploadError, match="could not be read"):
+        parse_csv_upload(filename, content)
+
+
+def test_agent_route_accepts_browser_xlsx_content_type(client):
+    response = client.post(
+        "/agent/formulations",
+        files={"file": (
+            "clean.xlsx",
+            _xlsx_upload([
+                ["INCI", "Concentration"],
+                ["NIACINAMIDE", "5%"],
+                ["GLYCERIN", "4%"],
+                ["Tosylchloramide sodium", "0.21%"],
+            ]),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )},
+    )
+    assert response.status_code == 201
+    assert response.json()["filename"] == "clean.xlsx"
 
 
 def test_agent_upload_confirmation_prepare_and_existing_screening(client):

@@ -1,0 +1,20 @@
+Document Label,,Regulens product demonstration,,,,,,
+FORMULA CODE,,DEMO-REVIEW-001,,,,,,
+FORMULA NAME,,Toothpaste screening and review demo,,,,,,
+Product Type,,Toothpaste,,,,,,
+Concentrations refer to,,finished_product,,,,,,
+Owner / source,,Regulens demo formulation,,,,,,
+,,,,,,,,
+Seq,RM / trade name,INCI / Ingredient,CAS,Amount,Unit,Basis,Preparation Stage,Source note
+01,Vitamin B3 Active,NIACINAMIDE,,5,%,,finished_product,Clear-result example
+02,Humectant,GLYCERIN,,4,%,,finished_product,Clear-result example
+03,Pro-vitamin B5,PANTHENOL,,1.5,%,,finished_product,Clear-result example
+04,Oxidiser salt,Chlorates of alkali metals,,4,%,,finished_product,Toothpaste context example
+05,Preservative within limit,Tosylchloramide sodium,,0.1,%,,finished_product,Within-limit example
+06,Preservative above limit,Tosylchloramide sodium,,0.21,%,,finished_product,Exceeded-limit example
+07,Theophylline blend,Aminophylline,317-34-0,,,,finished_product,Prohibited-list example
+08,Trace solvent,Diethylene glycol,111-46-6,0.05,%,,finished_product,Trace-exception review example
+09,Preservative at use stage,Tosylchloramide sodium,,0.1,%,,ready_for_use,Preparation-stage review example
+10,Conflicting identifiers,Aminophylline,128-37-0,,,,finished_product,Name-and-CAS review example
+11,Antioxidant,BHT,128-37-0,0.1,%,,finished_product,Rule-condition review example
+12,Supplier secret blend,Mystery Extract,,0.25,%,,finished_product,Unresolved identity example

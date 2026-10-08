@@ -22,13 +22,6 @@ from backend.app.services.formulation_agent import (
 
 
 router = APIRouter(prefix="/agent/formulations", tags=["formulation-agent"])
-ACCEPTED_CSV_CONTENT_TYPES = {
-    "text/csv",
-    "application/csv",
-    "application/vnd.ms-excel",
-    "text/plain",
-    "application/octet-stream",
-}
 
 
 def _service(request: Request) -> FormulationAgentService:
@@ -50,13 +43,8 @@ def _session_error(error: Exception) -> HTTPException:
 @router.post("", response_model=AgentSessionView, status_code=status.HTTP_201_CREATED)
 async def create_formulation_agent_session(
     request: Request,
-    file: Annotated[UploadFile, File(description="CSV formulation")],
+    file: Annotated[UploadFile, File(description="Formulation file")],
 ) -> AgentSessionView:
-    if file.content_type and file.content_type.casefold() not in ACCEPTED_CSV_CONTENT_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={"code": "agent_csv_type_unsupported", "message": "Only CSV text uploads are supported."},
-        )
     content = await file.read(MAX_FILE_BYTES + 1)
     try:
         parsed = parse_formulation_upload(file.filename or "formulation.csv", content)

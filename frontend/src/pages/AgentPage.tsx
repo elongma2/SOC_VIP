@@ -68,7 +68,7 @@ export function AgentPage() {
     if (!file || busy) return;
     setBusy(true); setError(null); setPrepared(null); setResponse(null); setSelectedRow(null); setProductContext(""); setFormulationId(""); setFormulationName("");
     try { setSession(await uploadAgentCSV(file)); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : "The CSV could not be uploaded."); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "The formulation file could not be uploaded."); }
     finally { setBusy(false); }
   };
 
@@ -228,7 +228,7 @@ export function AgentPage() {
         <header className="mb-7">
           <p className="eyebrow">Formulation agent</p>
           <h1 className="page-title">Turn a formulation file into screening input</h1>
-          <p className="mt-2 text-sm text-slate-600">AI interprets the CSV structure. The existing deterministic engine performs regulatory screening only after your confirmation.</p>
+          <p className="mt-2 text-sm text-slate-600">AI interprets the formulation file structure. The existing deterministic engine performs regulatory screening only after your confirmation.</p>
         </header>
 
         {error && <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert"><AlertTriangle size={16} />{error}</div>}
@@ -258,7 +258,7 @@ export function AgentPage() {
                   <h2 className="section-title">{session.filename}</h2>
                 </div>
                 <button className="secondary-button shrink-0" type="button" onClick={startNewCSV} disabled={busy}>
-                  <FileUp size={14} /> Start new CSV
+                  <FileUp size={14} /> Start new file
                 </button>
               </div>
               <div className="agent-stat-strip">

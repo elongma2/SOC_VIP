@@ -100,7 +100,7 @@ The Agent session store is still process-local memory. A Vercel serverless reque
 
 ## Formulation Agent
 
-The **Agent** tab accepts CSV formulations, interprets the table into the existing canonical formulation request, and pauses for explicit confirmation before screening. The backend loads the repository-root `.env` once with exported operating-system variables taking precedence. Configure the official OpenAI Python SDK with:
+The **Agent** tab accepts CSV, TSV, TXT, XLSX, XLS, JSON, and text-based PDF formulations, interprets the extracted grid into the existing canonical formulation request, and pauses for explicit confirmation before screening. The backend loads the repository-root `.env` once with exported operating-system variables taking precedence. Configure the official OpenAI Python SDK with:
 
 ```dotenv
 OPENAI_API_KEY=your-key
@@ -113,19 +113,19 @@ OPENAI_EXPLANATION_MODEL=gpt-5.6-luna
 
 The Agent API is:
 
-- `POST /agent/formulations` — multipart CSV upload and interpretation;
+- `POST /agent/formulations` — multipart formulation-file upload and interpretation;
 - `GET /agent/formulations/{session_id}` — current structured session;
 - `POST /agent/formulations/{session_id}/answers` — typed confirmations and edits;
 - `POST /agent/formulations/{session_id}/prepare` — canonical request validation without screening;
 - `POST /agent/formulations/{session_id}/retry` — retry a recoverable interpretation failure.
 
-CSV input is limited to 2 MiB, 500 logical rows, 50 columns, 8,192 characters per cell, and UTF-8 or BOM-identified UTF-16 text. Sessions are memory-only, expire after 60 minutes of inactivity, and disappear when the API process restarts. Uploaded bytes are discarded after local parsing. Local code only decodes the file, detects the delimiter, enforces bounds, and preserves exact numbered cells. It does not assume the first row is a header or that a particular column name or order is required. The complete bounded grid is sent to the Responses API with response storage disabled; accepted PDFs, regulatory databases, filesystem paths, and API keys are never included.
+All formulation files are limited to 2 MiB, 500 logical rows, 50 columns, and 8,192 characters per cell. CSV, TSV, and TXT input supports UTF-8, UTF-8 with BOM, and BOM-identified UTF-16 text. XLSX and XLS currently read the first worksheet's displayed values. JSON must be an array of row arrays or an object with a `rows` array. PDF support extracts embedded text locally and does not perform OCR, so scanned/image-only PDFs return an empty-input error. Sessions are memory-only, expire after 60 minutes of inactivity, and disappear when the API process restarts. Uploaded bytes are discarded after local parsing. Local code only extracts a bounded grid and preserves exact numbered cells; it does not assume the first row is a header or that a particular column name or order is required. The complete bounded grid is sent to the Responses API with response storage disabled; accepted regulatory PDFs, regulatory databases, filesystem paths, and API keys are never included.
 
 Clarifications identify the affected source row, ingredient, field, and original value. The editable interpretation row and its clarification card share the same backend row state: text edits save on blur, selectors save immediately, and resolving either surface updates the other. Missing concentration units are handled per row. An unchanged unmatched identity is shown as unresolved instead of being presented as a recommendation; only an exact accepted catalogue candidate is labelled as a source-backed match.
 
 The Agent model identifies headers, formulation rows, column meanings, explicit formulation metadata, and logical ingredients. A logical ingredient may cite exact cells from more than one source row. Every proposed field retains its cell references, and the backend rejects missing rows, impossible coordinates, changed source values, duplicate logical IDs, or ungrounded values. One bounded semantic repair is allowed before the session fails recoverably. Non-exact identity changes, assumed units, non-numeric values such as `QS` or `balance`, and a missing preparation stage remain under user control. **Confirm & Screen** sends the accepted canonical JSON to the existing deterministic `/screen-formulation` endpoint. The model has no screening tool and cannot generate regulatory findings or limits.
 
-The uploaded CSV has no mandatory template. The Agent maps arbitrary source columns into the existing canonical request:
+The uploaded formulation file has no mandatory table template. The Agent maps arbitrary source columns into the existing canonical request:
 
 - each ingredient requires only `ingredient_name`;
 - `cas_number` is optional;
@@ -134,7 +134,7 @@ The uploaded CSV has no mandatory template. The Agent maps arbitrary source colu
 
 Columns such as **RM Name**, trade name, supplier, function, Notes, Remarks, comments, and batch information remain exact source metadata. They are visible in the collapsed Agent provenance view and after screening but are never sent to the deterministic regulatory engine. When both RM/trade name and INCI/common ingredient columns are present, the Agent proposes the INCI/common ingredient column; unclear mappings require confirmation. Notes are never required and cannot generate regulatory conclusions.
 
-Product Context is handled separately from Preparation Stage. An exact source value may be proposed only when it equals an accepted backend option. Ambiguous source text is left unmapped. If the CSV has no Product Context, the user must choose an accepted option or explicitly confirm that it is unavailable; the screening engine may then return information missing for a context-dependent rule. A missing Preparation Stage produces a visible global proposal, such as **Finished product**, which is not applied until the user confirms it.
+Product Context is handled separately from Preparation Stage. An exact source value may be proposed only when it equals an accepted backend option. Ambiguous source text is left unmapped. If the source file has no Product Context, the user must choose an accepted option or explicitly confirm that it is unavailable; the screening engine may then return information missing for a context-dependent rule. A missing Preparation Stage produces a visible global proposal, such as **Finished product**, which is not applied until the user confirms it.
 
 The representative fixtures are [`backend/tests/fixtures/agent_clean.csv`](backend/tests/fixtures/agent_clean.csv) and [`backend/tests/fixtures/agent_messy.csv`](backend/tests/fixtures/agent_messy.csv). The clean file contains only ingredient and concentration columns. The messy file includes optional RM Name and Remarks fields to demonstrate provenance rather than required screening input.
 
