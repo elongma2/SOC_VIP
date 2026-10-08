@@ -241,11 +241,11 @@ export function AgentPage() {
             onDrop={(event) => { event.preventDefault(); event.currentTarget.classList.remove("is-dragging"); void upload(event.dataTransfer.files[0]); }}
           >
             {busy ? <LoaderCircle className="animate-spin text-slate-500" size={34} /> : <FileUp className="text-slate-500" size={34} />}
-            <h2>{busy ? "Interpreting formulation" : "Drop formulation CSV here"}</h2>
+            <h2>{busy ? "Interpreting formulation" : "Drop formulation file here"}</h2>
             <p>{busy ? "Regulens is identifying the formulation structure and ingredient fields." : "or"}</p>
             <button className="secondary-button" type="button" onClick={() => fileInput.current?.click()} disabled={busy}>Browse files</button>
-            <input ref={fileInput} className="sr-only" type="file" accept=".csv,text/csv" aria-label="Choose formulation CSV" onChange={(event) => void upload(event.target.files?.[0])} />
-            <small>CSV supported · maximum 2 MiB</small>
+            <input ref={fileInput} className="sr-only" type="file" accept=".csv,.xlsx,.xls,.txt,.tsv,.json,.pdf,text/csv,application/json,application/pdf" aria-label="Choose formulation CSV" onChange={(event) => void upload(event.target.files?.[0])} />
+            <small>CSV, XLSX, XLS, TXT, TSV, JSON, and PDF supported · maximum 2 MiB</small>
           </section>
         )}
 

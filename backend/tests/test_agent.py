@@ -136,8 +136,8 @@ def test_csv_parser_preserves_source_cells_and_supports_bom():
 
 
 def test_csv_parser_rejects_invalid_files():
-    with pytest.raises(CSVUploadError, match="Only .csv"):
-        parse_csv_upload("formula.xlsx", b"a,b")
+    with pytest.raises(CSVUploadError, match="Supported formulation files"):
+        parse_csv_upload("formula.docx", b"a,b")
     with pytest.raises(CSVUploadError, match="empty"):
         parse_csv_upload("formula.csv", b"")
 

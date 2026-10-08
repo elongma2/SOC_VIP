@@ -11,7 +11,7 @@ from backend.app.models.agent import (
     AgentPreparedFormulation,
     AgentSessionView,
 )
-from backend.app.services.agent_csv import CSVUploadError, MAX_FILE_BYTES, parse_csv_upload
+from backend.app.services.agent_csv import CSVUploadError, MAX_FILE_BYTES, parse_formulation_upload
 from backend.app.services.formulation_agent import (
     AgentConfirmationRequiredError,
     AgentRevisionConflictError,
@@ -59,7 +59,7 @@ async def create_formulation_agent_session(
         )
     content = await file.read(MAX_FILE_BYTES + 1)
     try:
-        parsed = parse_csv_upload(file.filename or "formulation.csv", content)
+        parsed = parse_formulation_upload(file.filename or "formulation.csv", content)
     except CSVUploadError as error:
         raise HTTPException(
             status_code=error.status_code,
